@@ -8,6 +8,7 @@
 #include "nav2_costmap_2d/layer.hpp"
 #include "nav2_costmap_2d/layered_costmap.hpp"
 #include "nav2_costmap_2d/costmap_layer.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
 #include "canmpc_msgs/msg/human_states.hpp"
 
 namespace canmpc_costmap_layers

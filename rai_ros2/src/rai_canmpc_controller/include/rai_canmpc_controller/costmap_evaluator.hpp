@@ -2,6 +2,7 @@
 #define NAV2_CANMPC_CONTROLLER__COSTMAP_EVALUATOR_HPP_
 
 #include "nav2_costmap_2d/costmap_2d.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
 
 namespace rai_canmpc_controller
 {
