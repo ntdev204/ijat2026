@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from rai_web_api.database import DatasetRun, DatasetScenario, create_session, get_db, init_db
+from rai_web_api.database import DatasetRun, DatasetScenario, SavedMap, create_session, get_db, init_db
 from rai_web_api.node import WebBridgeNode
 from rai_web_api.webrtc import RosImageVideoTrack
 
@@ -42,6 +42,15 @@ bridge_node: Optional[WebBridgeNode] = None
 spin_thread: Optional[threading.Thread] = None
 peer_connections: set[RTCPeerConnection] = set()
 active_dataset_run_id: Optional[int] = None
+
+training_state = {
+    "running": False,
+    "progress": 0,
+    "epoch": 0,
+    "loss": 0.0,
+    "accuracy": 0.0,
+    "history": []
+}
 
 
 class WebRtcOffer(BaseModel):
@@ -68,6 +77,21 @@ class DatasetStartRequest(BaseModel):
     run_index: Optional[int] = Field(default=None, ge=0)
     split: str = Field(default="unsplit")
     notes: str = ""
+
+
+class DatasetCaptureRequest(BaseModel):
+    tag: str = Field(default="corridor")
+
+
+class TrainStartRequest(BaseModel):
+    epochs: int = Field(default=50, ge=1)
+    learning_rate: float = Field(default=0.001, gt=0.0)
+    batch_size: int = Field(default=32, ge=1)
+    architecture: str = Field(default="ResNet18")
+
+
+class SaveMapRequest(BaseModel):
+    name: str = Field(..., min_length=1)
 
 
 def _spin_ros_node() -> None:
@@ -165,6 +189,54 @@ async def telemetry_ws(websocket: WebSocket) -> None:
         bridge_node.unregister_telemetry_client()
 
 
+@app.websocket("/api/ws/map")
+async def map_ws(websocket: WebSocket) -> None:
+    if bridge_node is None:
+        await websocket.close(code=1011)
+        return
+
+    await websocket.accept()
+    bridge_node.register_map_client()
+    try:
+        while True:
+            with bridge_node.lock:
+                current_map = bridge_node.latest_map
+            
+            if current_map is not None:
+                await websocket.send_json(current_map)
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bridge_node.unregister_map_client()
+
+
+@app.websocket("/api/ws/paths")
+async def paths_ws(websocket: WebSocket) -> None:
+    if bridge_node is None:
+        await websocket.close(code=1011)
+        return
+
+    await websocket.accept()
+    bridge_node.register_paths_client()
+    try:
+        while True:
+            with bridge_node.lock:
+                global_plan = list(bridge_node.latest_global_plan)
+                local_plan = list(bridge_node.latest_local_plan)
+            
+            await websocket.send_json({
+                "global_plan": global_plan,
+                "local_plan": local_plan,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            await asyncio.sleep(0.2)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bridge_node.unregister_paths_client()
+
+
 @app.websocket("/api/ws/dataset")
 async def dataset_ws(websocket: WebSocket) -> None:
     if bridge_node is None:
@@ -236,6 +308,165 @@ async def start_slam() -> dict:
 @app.post("/api/robot/slam/stop")
 async def stop_slam() -> dict:
     return {"success": True, "message": "Stop SLAM through robot bringup/launch supervision."}
+
+
+@app.post("/api/map/save")
+async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+
+    # Đảm bảo đã subscribe topic /map
+    bridge_node.ensure_map_subscription()
+
+    # Chờ bản đồ được cập nhật từ topic (nếu mới subscribe)
+    max_wait = 15
+    current_map = None
+    for _ in range(max_wait):
+        with bridge_node.lock:
+            current_map = bridge_node.latest_map
+        if current_map is not None:
+            break
+        await asyncio.sleep(0.2)
+
+    if current_map is None:
+        raise HTTPException(
+            status_code=404, 
+            detail="No map data available from /map topic. Make sure SLAM or map_server is active."
+        )
+
+    # Lưu bản đồ vào cơ sở dữ liệu
+    saved_map = SavedMap(
+        name=request.name,
+        width=current_map["width"],
+        height=current_map["height"],
+        resolution=current_map["resolution"],
+        origin_x=current_map["origin_x"],
+        origin_y=current_map["origin_y"],
+        grid_data=current_map["grid_data"],
+        created_at=datetime.utcnow()
+    )
+    db.add(saved_map)
+    await db.commit()
+    await db.refresh(saved_map)
+
+    return {
+        "success": True,
+        "message": f"Map '{request.name}' saved successfully",
+        "map_id": saved_map.id
+    }
+
+
+@app.get("/api/map/list")
+async def list_maps(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    result = await db.execute(select(SavedMap).order_by(desc(SavedMap.created_at)))
+    maps = result.scalars().all()
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "width": m.width,
+            "height": m.height,
+            "resolution": m.resolution,
+            "origin_x": m.origin_x,
+            "origin_y": m.origin_y,
+            "created_at": m.created_at.isoformat() if m.created_at else None
+        }
+        for m in maps
+    ]
+
+
+@app.get("/api/map/{map_id}")
+async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    saved_map = await db.get(SavedMap, map_id)
+    if saved_map is None:
+        raise HTTPException(status_code=404, detail="Saved map not found")
+    return {
+        "id": saved_map.id,
+        "name": saved_map.name,
+        "width": saved_map.width,
+        "height": saved_map.height,
+        "resolution": saved_map.resolution,
+        "origin_x": saved_map.origin_x,
+        "origin_y": saved_map.origin_y,
+        "grid_data": saved_map.grid_data,
+        "created_at": saved_map.created_at.isoformat() if saved_map.created_at else None
+    }
+
+
+@app.post("/api/dataset/capture")
+async def capture_dataset(request: DatasetCaptureRequest) -> dict:
+    # Mô phỏng quá trình chụp dữ liệu ảnh từ robot
+    logger.info(f"Simulating dataset capture for tag: {request.tag}")
+    await asyncio.sleep(0.3)  # Mô phỏng thời gian chờ camera capture
+    return {
+        "success": True,
+        "message": f"Successfully captured image and metadata with tag: {request.tag}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "filename": f"capture_{request.tag}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png",
+        "tag": request.tag
+    }
+
+
+@app.post("/api/train/start")
+async def start_training(request: TrainStartRequest, background_tasks: BackgroundTasks) -> dict:
+    global training_state
+    if training_state["running"]:
+        raise HTTPException(status_code=409, detail="Training is already running")
+
+    training_state["running"] = True
+    training_state["progress"] = 0
+    training_state["epoch"] = 0
+    training_state["loss"] = 0.95
+    training_state["accuracy"] = 0.35
+    training_state["history"] = []
+
+    background_tasks.add_task(_simulate_training_job, request.epochs)
+    return {
+        "success": True,
+        "message": "Training job started successfully in background",
+        "config": {
+            "epochs": request.epochs,
+            "learning_rate": request.learning_rate,
+            "batch_size": request.batch_size,
+            "architecture": request.architecture
+        }
+    }
+
+
+@app.get("/api/train/status")
+async def get_training_status() -> dict:
+    return training_state
+
+
+async def _simulate_training_job(epochs: int) -> None:
+    global training_state
+    import random
+    loss = 0.95
+    accuracy = 0.35
+    for epoch in range(1, epochs + 1):
+        if not training_state["running"]:
+            break
+        
+        # Mô phỏng thời gian huấn luyện 1 epoch
+        await asyncio.sleep(0.4)
+        
+        loss = max(0.02, loss - random.uniform(0.015, 0.045))
+        accuracy = min(0.995, accuracy + random.uniform(0.01, 0.035))
+        progress = int((epoch / epochs) * 100)
+        
+        training_state.update({
+            "progress": progress,
+            "epoch": epoch,
+            "loss": round(loss, 4),
+            "accuracy": round(accuracy, 4)
+        })
+        training_state["history"].append({
+            "epoch": epoch,
+            "loss": round(loss, 4),
+            "accuracy": round(accuracy, 4)
+        })
+        
+    training_state["running"] = False
 
 
 @app.post("/api/dataset/start")

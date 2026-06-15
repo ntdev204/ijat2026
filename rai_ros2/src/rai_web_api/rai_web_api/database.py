@@ -122,6 +122,20 @@ class SystemLog(Base):
     component = Column(String(50), nullable=False)
     message = Column(Text, nullable=False)
 
+
+class SavedMap(Base):
+    __tablename__ = 'saved_maps'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    width = Column(Integer, nullable=False)
+    height = Column(Integer, nullable=False)
+    resolution = Column(Float, nullable=False)
+    origin_x = Column(Float, nullable=False)
+    origin_y = Column(Float, nullable=False)
+    grid_data = Column(Text, nullable=False)  # Base64 encoded occupancy grid data or JSON string
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # --- DATABASE ENGINE & SESSION MANAGERS ---
 
 _engine = None

@@ -2,14 +2,15 @@ import json
 import math
 import threading
 import time
+import base64
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import LaserScan, Image
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid, Path
 from std_msgs.msg import Float32, Float32MultiArray, String
 
 try:
@@ -58,6 +59,8 @@ class WebBridgeNode(Node):
         # Lazy Subscription counters
         self.active_telemetry_clients = 0
         self.active_camera_clients = 0
+        self.active_map_clients = 0
+        self.active_paths_clients = 0
 
         # Subscriptions placeholders
         self.scan_sub = None
@@ -67,6 +70,14 @@ class WebBridgeNode(Node):
         self.bounds_sub = None
         self.solver_sub = None
         self.camera_sub = None
+        self.map_sub = None
+        self.plan_sub = None
+        self.local_plan_sub = None
+
+        # Thread-safe caches for map and paths
+        self.latest_map = None
+        self.latest_global_plan = []
+        self.latest_local_plan = []
 
         # QoS Profiles
         self.sensor_qos = QoSProfile(
@@ -78,6 +89,12 @@ class WebBridgeNode(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
             depth=5
+        )
+        self.map_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
         )
 
         # Permanent Publishers/Clients
@@ -189,7 +206,99 @@ class WebBridgeNode(Node):
                     self.camera_sub = None
                 self.latest_camera_frame = None
 
+    def register_map_client(self):
+        """Kích hoạt subscription map khi có client kết nối websocket"""
+        with self.lock:
+            self.active_map_clients += 1
+            if self.active_map_clients == 1:
+                self.get_logger().info("🗺️ Map client connected. Subscribing to /map...")
+                self.map_sub = self.create_subscription(
+                    OccupancyGrid, '/map', self.map_callback, self.map_qos
+                )
+
+    def unregister_map_client(self):
+        """Hủy subscription map khi không còn client nào"""
+        with self.lock:
+            self.active_map_clients = max(0, self.active_map_clients - 1)
+            if self.active_map_clients == 0:
+                self.get_logger().info("💤 No map clients. Unsubscribing from map topic...")
+                if self.map_sub:
+                    self.destroy_subscription(self.map_sub)
+                    self.map_sub = None
+
+    def ensure_map_subscription(self):
+        """Đảm bảo topic /map đã được subscribe (dùng khi lưu map qua HTTP endpoint)"""
+        with self.lock:
+            if self.map_sub is None:
+                self.get_logger().info("🗺️ Ensuring subscription to /map for saving...")
+                self.map_sub = self.create_subscription(
+                    OccupancyGrid, '/map', self.map_callback, self.map_qos
+                )
+
+    def register_paths_client(self):
+        """Kích hoạt subscription global/local paths khi client kết nối websocket"""
+        with self.lock:
+            self.active_paths_clients += 1
+            if self.active_paths_clients == 1:
+                self.get_logger().info("🗺️ Path client connected. Subscribing to /plan and /local_plan...")
+                self.plan_sub = self.create_subscription(
+                    Path, '/plan', self.global_plan_callback, self.reliable_qos
+                )
+                self.local_plan_sub = self.create_subscription(
+                    Path, '/local_plan', self.local_plan_callback, self.reliable_qos
+                )
+
+    def unregister_paths_client(self):
+        """Hủy subscription paths khi không còn client nào"""
+        with self.lock:
+            self.active_paths_clients = max(0, self.active_paths_clients - 1)
+            if self.active_paths_clients == 0:
+                self.get_logger().info("💤 No path clients. Unsubscribing from path topics...")
+                if self.plan_sub:
+                    self.destroy_subscription(self.plan_sub)
+                    self.plan_sub = None
+                if self.local_plan_sub:
+                    self.destroy_subscription(self.local_plan_sub)
+                    self.local_plan_sub = None
+
     # --- CALLBACKS ---
+
+    def map_callback(self, msg: OccupancyGrid):
+        """Callback nhận dữ liệu map (OccupancyGrid) và mã hóa base64 dữ liệu grid để lưu trữ/gửi đi"""
+        try:
+            data_bytes = bytes([x & 0xFF for x in msg.data])
+            grid_base64 = base64.b64encode(data_bytes).decode('utf-8')
+            
+            with self.lock:
+                self.latest_map = {
+                    "width": msg.info.width,
+                    "height": msg.info.height,
+                    "resolution": msg.info.resolution,
+                    "origin_x": msg.info.origin.position.x,
+                    "origin_y": msg.info.origin.position.y,
+                    "grid_data": grid_base64,
+                    "timestamp": time.time()
+                }
+        except Exception as e:
+            self.get_logger().error(f"Error in map_callback: {e}")
+
+    def global_plan_callback(self, msg: Path):
+        """Callback nhận đường đi toàn cục (global plan)"""
+        try:
+            poses = [{"x": p.pose.position.x, "y": p.pose.position.y} for p in msg.poses]
+            with self.lock:
+                self.latest_global_plan = poses
+        except Exception as e:
+            self.get_logger().error(f"Error in global_plan_callback: {e}")
+
+    def local_plan_callback(self, msg: Path):
+        """Callback nhận đường đi cục bộ (local plan)"""
+        try:
+            poses = [{"x": p.pose.position.x, "y": p.pose.position.y} for p in msg.poses]
+            with self.lock:
+                self.latest_local_plan = poses
+        except Exception as e:
+            self.get_logger().error(f"Error in local_plan_callback: {e}")
 
     def voltage_callback(self, msg: Float32):
         """Callback đọc pin và tính % pin trực tiếp"""
