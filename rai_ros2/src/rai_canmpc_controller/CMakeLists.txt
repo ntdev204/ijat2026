@@ -24,8 +24,61 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(canmpc_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-find_package(casadi REQUIRED)
 find_package(Eigen3 REQUIRED)
+
+find_package(casadi QUIET)
+if(casadi_FOUND)
+  message(STATUS "Found CasADi via CMake package")
+  if(TARGET casadi::casadi)
+    set(casadi_LIBRARIES casadi::casadi)
+  elseif(TARGET CasADi::casadi)
+    set(casadi_LIBRARIES CasADi::casadi)
+  elseif(TARGET casadi)
+    set(casadi_LIBRARIES casadi)
+  endif()
+else()
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c "import casadi, os; print(os.path.dirname(casadi.__file__))"
+      OUTPUT_VARIABLE CASADI_PYTHON_PACKAGE_DIR
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+  endif()
+
+  find_path(casadi_INCLUDE_DIR
+    NAMES casadi/casadi.hpp
+    HINTS
+      "${CASADI_PYTHON_PACKAGE_DIR}/include"
+      /usr/local/include
+      /usr/include
+  )
+
+  find_library(casadi_LIBRARY
+    NAMES casadi libcasadi
+    HINTS
+      "${CASADI_PYTHON_PACKAGE_DIR}"
+      "${CASADI_PYTHON_PACKAGE_DIR}/lib"
+      /usr/local/lib
+      /usr/lib
+      /usr/lib/aarch64-linux-gnu
+      /usr/lib/x86_64-linux-gnu
+  )
+
+  if(NOT casadi_INCLUDE_DIR OR NOT casadi_LIBRARY)
+    message(FATAL_ERROR
+      "CasADi C++ headers/library were not found. Install CasADi C++ runtime "
+      "or install the Python wheel with C++ artifacts, then rebuild. Checked "
+      "Python package path='${CASADI_PYTHON_PACKAGE_DIR}', /usr/local, and system lib paths."
+    )
+  endif()
+
+  set(casadi_INCLUDE_DIRS ${casadi_INCLUDE_DIR})
+  set(casadi_LIBRARIES ${casadi_LIBRARY})
+  message(STATUS "Found CasADi include: ${casadi_INCLUDE_DIRS}")
+  message(STATUS "Found CasADi library: ${casadi_LIBRARIES}")
+endif()
 
 # Include directories
 include_directories(
