@@ -131,7 +131,7 @@ class Nav2ConfigRequest(BaseModel):
 
 
 def _nav2_package_share() -> Path:
-    return Path(get_package_share_directory("rai_robot_nav2")).resolve()
+    return Path(get_package_share_directory("rai_nav2")).resolve()
 
 
 def _default_nav2_params_path() -> Path:
@@ -164,7 +164,7 @@ def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_para
 
 def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, global_planner: str) -> str:
     return (
-        "ros2 launch rai_robot_nav2 rai_nav2.launch.py "
+        "ros2 launch rai_nav2 rai_nav2.launch.py "
         f"map:={map_path} params:={params_path} "
         f"local_planner:={local_planner} global_planner:={global_planner}"
     )
