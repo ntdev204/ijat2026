@@ -44,11 +44,11 @@ def generate_launch_description():
     cleanup_processes = ExecuteProcess(
         cmd=['bash', '-c',
              'echo "[dataset_collection] Cleaning up existing processes..."; '
-             'pkill -9 -f "ros2 launch" 2>/dev/null || true; '
-             'pkill -9 -f "rai_" 2>/dev/null || true; '
+             'pkill -9 -x "rai_robot_node" 2>/dev/null || true; '
+             'pkill -9 -x "lslidar_driver_node" 2>/dev/null || true; '
+             'pkill -9 -x "ekf_node" 2>/dev/null || true; '
              'pkill -9 -f "slam_toolbox" 2>/dev/null || true; '
              'pkill -9 -f "nav2" 2>/dev/null || true; '
-             'pkill -9 -f "rplidar" 2>/dev/null || true; '
              'pkill -9 -f "ldlidar" 2>/dev/null || true; '
              'pkill -9 -f "astra" 2>/dev/null || true; '
              'echo "[dataset_collection] Waiting 2 seconds..."; '

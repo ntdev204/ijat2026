@@ -241,8 +241,7 @@ class RaiControlNode(Node):
         clean = node_name.strip("/")
         package_hints = (
             ("scada_control_node", "rai_scada_bridge"),
-            ("rplidar", "rplidar_ros"),
-            ("ldlidar", "rai_lidar_ros2"),
+            ("lslidar", "lslidar_driver"),
             ("slam_toolbox", "slam_toolbox"),
             ("map_server", "nav2_map_server"),
             ("amcl", "nav2_amcl"),
