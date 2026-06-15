@@ -1,0 +1,428 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="warehouse_rai">
+    <!-- Physics Configuration for real-time simulation -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Ignition Gazebo Plugins -->
+    <plugin
+      filename="ignition-gazebo-physics-system"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-scene-broadcaster-system"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-sensors-system"
+      name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-contact-system"
+      name="ignition::gazebo::systems::Contact">
+    </plugin>
+
+    <!-- Global Lighting -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 15 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground Plane representing concrete warehouse floor -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>100</mu>
+                <mu2>50</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ========================================== -->
+    <!-- SCENARIO S1: Open Zone (Wide open space)    -->
+    <!-- Robot starts at (-12, -12), goal at (-2, -12) -->
+    <!-- ========================================== -->
+    <model name="s1_outer_boundary">
+      <static>true</static>
+      <pose>-15 -15 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.2 10 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.2 10 2</size></box></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ========================================== -->
+    <!-- SCENARIO S2: Narrow Corridor (Width 1.3m)   -->
+    <!-- Corridor runs from y=-6 to y=6 at x=5      -->
+    <!-- Robot starts at (5, -8), goal at (5, 8)     -->
+    <!-- ========================================== -->
+    <model name="s2_left_wall">
+      <static>true</static>
+      <pose>4.25 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.2 12.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.2 12.0 2.5</size></box></geometry>
+          <material><ambient>0.4 0.4 0.4 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s2_right_wall">
+      <static>true</static>
+      <pose>5.75 0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.2 12.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.2 12.0 2.5</size></box></geometry>
+          <material><ambient>0.4 0.4 0.4 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ========================================== -->
+    <!-- SCENARIO S3: Human Proximity Zone           -->
+    <!-- Parallel warehouse shelves at x=-8 to x=-2   -->
+    <!-- Gaps form lanes of ~1.5m. Humans standing.   -->
+    <!-- Robot starts at (-8, 12), goal at (-2, 12)   -->
+    <!-- ========================================== -->
+    <model name="s3_shelf_1">
+      <static>true</static>
+      <pose>-8 6 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+          <material><ambient>0.7 0.4 0.1 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s3_shelf_2">
+      <static>true</static>
+      <pose>-5.5 6 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+          <material><ambient>0.7 0.4 0.1 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s3_shelf_3">
+      <static>true</static>
+      <pose>-3 6 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 4.0 2.5</size></box></geometry>
+          <material><ambient>0.7 0.4 0.1 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Standing/idle humans in the shelves channels -->
+    <actor name="standing_human_s3_left">
+      <pose>-6.75 6.0 0 0 0 1.57</pose>
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+      </skin>
+      <animation name="idle">
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="idle">
+          <waypoint>
+            <time>0.0</time>
+            <pose>-6.75 6.0 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.0</time>
+            <pose>-6.75 6.0 0 0 0 1.57</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <actor name="standing_human_s3_right">
+      <pose>-4.25 6.0 0 0 0 -1.57</pose>
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+      </skin>
+      <animation name="idle">
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="idle">
+          <waypoint>
+            <time>0.0</time>
+            <pose>-4.25 6.0 0 0 0 -1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.0</time>
+            <pose>-4.25 6.0 0 0 0 -1.57</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <!-- ========================================== -->
+    <!-- SCENARIO S4: Dynamic Crossing Path          -->
+    <!-- Robot travels y=-8 to y=8 at x=-11         -->
+    <!-- Human crosses from x=-15 to x=-7 at y=0     -->
+    <!-- ========================================== -->
+    <!-- Obstacles to frame the S4 crossing intersection -->
+    <model name="s4_barrier_left">
+      <static>true</static>
+      <pose>-14 2 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>2.0 0.5 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>2.0 0.5 2</size></box></geometry>
+          <material><ambient>0.3 0.3 0.5 1</ambient><diffuse>0.4 0.4 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s4_barrier_right">
+      <static>true</static>
+      <pose>-8 2 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>2.0 0.5 2</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>2.0 0.5 2</size></box></geometry>
+          <material><ambient>0.3 0.3 0.5 1</ambient><diffuse>0.4 0.4 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Crossing human actor -->
+    <actor name="crossing_human_s4">
+      <pose>-15.0 0.0 0 0 0 0</pose>
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <!-- Back and forth walk across the robot's navigation lane (x = -11) -->
+        <trajectory id="0" type="walk">
+          <waypoint>
+            <time>0.0</time>
+            <pose>-15.0 0.0 0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>5.0</time>
+            <pose>-7.0 0.0 0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>5.1</time>
+            <pose>-7.0 0.0 0 0 0 3.14</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.0</time>
+            <pose>-15.0 0.0 0 0 0 3.14</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.1</time>
+            <pose>-15.0 0.0 0 0 0 0</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <!-- ========================================== -->
+    <!-- SCENARIO S5: Occlusion / Sudden Appearance  -->
+    <!-- L-shaped corner at (10, 5)                  -->
+    <!-- Robot turns right around corner: (8, 0) to (14, 5)-->
+    <!-- Human emerges from behind occlusion wall    -->
+    <!-- ========================================== -->
+    <model name="s5_occluding_wall_1">
+      <static>true</static>
+      <pose>10.0 4.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.2 4.0 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.2 4.0 2.5</size></box></geometry>
+          <material><ambient>0.5 0.2 0.2 1</ambient><diffuse>0.6 0.3 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s5_occluding_wall_2">
+      <static>true</static>
+      <pose>12.0 6.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>4.2 0.2 2.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>4.2 0.2 2.5</size></box></geometry>
+          <material><ambient>0.5 0.2 0.2 1</ambient><diffuse>0.6 0.3 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Sudden appearance actor hiding behind the wall then walking out -->
+    <actor name="sudden_human_s5">
+      <pose>11.5 5.5 0 0 0 -1.57</pose>
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <!-- Hides behind the wall then steps out across the corner pathway -->
+        <trajectory id="0" type="walk">
+          <waypoint>
+            <time>0.0</time>
+            <pose>11.5 5.5 0 0 0 -1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>4.0</time>
+            <pose>11.5 5.5 0 0 0 -1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>6.0</time>
+            <pose>11.5 1.5 0 0 0 -1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>6.1</time>
+            <pose>11.5 1.5 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>8.0</time>
+            <pose>11.5 5.5 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>10.0</time>
+            <pose>11.5 5.5 0 0 0 -1.57</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <!-- Additional dynamic worker actor for overall layout realism -->
+    <actor name="ambient_worker_1">
+      <pose>0.0 -5.0 0 0 0 0</pose>
+      <skin>
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+      </skin>
+      <animation name="walk">
+        <filename>https://fuel.gazebosim.org/1.0/Ming/models/Actor/char/walk.dae</filename>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walk">
+          <waypoint>
+            <time>0.0</time>
+            <pose>0.0 -5.0 0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>8.0</time>
+            <pose>0.0 5.0 0 0 0 1.57</pose>
+          </waypoint>
+          <waypoint>
+            <time>8.1</time>
+            <pose>0.0 5.0 0 0 0 3.14</pose>
+          </waypoint>
+          <waypoint>
+            <time>16.0</time>
+            <pose>0.0 -5.0 0 0 0 3.14</pose>
+          </waypoint>
+          <waypoint>
+            <time>16.1</time>
+            <pose>0.0 -5.0 0 0 0 0</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+  </world>
+</sdf>

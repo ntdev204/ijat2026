@@ -1,0 +1,44 @@
+/* ----------------------------------------------------------------------
+ * Copyright (C) 2025-2026 RAI K63. All rights reserved.
+ *
+ * $Date:        2026-05-19
+ * $Revision:    1.0
+ *
+ * Project:      RAI STM
+ * Title:        control.h
+ *
+ * Description:  control.h module
+ *
+ * Target Processor: Cortex-M7/Cortex-M4/Cortex-M3/Cortex-M0
+ * -------------------------------------------------------------------- */
+
+#ifndef __CONTROL_H
+#define __CONTROL_H
+#include "sys.h"
+
+#define PI 3.14159265
+#define ZHONGZHI 0
+#define DIFFERENCE 100
+extern	int Balance_Pwm,Velocity_Pwm,Turn_Pwm;
+int EXTI15_10_IRQHandler(void);
+void Set_Pwm(int motor_a,int motor_b,int servo);
+void Kinematic_Analysis(float Vy,float angle);
+void Kinematic_Analysis2(float Vy,float Vz);
+void Key(void);
+void Xianfu_Pwm(int amplitude);
+void Xianfu_Velocity(int amplitude_A,int amplitude_B,int amplitude_C,int amplitude_D);
+u8 Turn_Off( int voltage);
+u32 myabs(long int a);
+int Incremental_PI_A (int Encoder,int Target);
+int Incremental_PI_B (int Encoder,int Target);
+int Incremental_PI_C (int Encoder,int Target);
+int Incremental_PI_D (int Encoder,int Target);
+
+int Position_PID_A (int Encoder,int Target);
+int Position_PID_B (int Encoder,int Target);
+int Position_PID_C (int Encoder,int Target);
+int Position_PID_D (int Encoder,int Target);
+void Get_RC(u8 mode);
+void Count_Velocity(void);
+void CAN_N_Usart_Control(void);
+#endif

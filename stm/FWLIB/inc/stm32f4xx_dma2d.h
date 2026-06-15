@@ -1,0 +1,277 @@
+/* ----------------------------------------------------------------------
+ * Copyright (C) 2025-2026 RAI K63. All rights reserved.
+ *
+ * $Date:        2026-05-19
+ * $Revision:    1.0
+ *
+ * Project:      RAI STM
+ * Title:        stm32f4xx_dma2d.h
+ *
+ * Description:  stm32f4xx_dma2d.h module
+ *
+ * Target Processor: Cortex-M7/Cortex-M4/Cortex-M3/Cortex-M0
+ * -------------------------------------------------------------------- */
+
+#ifndef __STM32F4xx_DMA2D_H
+#define __STM32F4xx_DMA2D_H
+
+#ifdef __cplusplus
+ extern "C" {
+#endif
+
+
+#include "stm32f4xx.h"
+
+
+typedef struct
+{
+  uint32_t DMA2D_Mode;
+
+  uint32_t DMA2D_CMode;
+
+  uint32_t DMA2D_OutputBlue;
+
+  uint32_t DMA2D_OutputGreen;
+
+  uint32_t DMA2D_OutputRed;
+
+  uint32_t DMA2D_OutputAlpha;
+
+  uint32_t DMA2D_OutputMemoryAdd;
+
+  uint32_t DMA2D_OutputOffset;
+
+  uint32_t DMA2D_NumberOfLine;
+
+  uint32_t DMA2D_PixelPerLine;
+} DMA2D_InitTypeDef;
+
+
+typedef struct
+{
+  uint32_t DMA2D_FGMA;
+
+  uint32_t DMA2D_FGO;
+
+  uint32_t DMA2D_FGCM;
+
+  uint32_t DMA2D_FG_CLUT_CM;
+
+  uint32_t DMA2D_FG_CLUT_SIZE;
+
+  uint32_t DMA2D_FGPFC_ALPHA_MODE;
+
+  uint32_t DMA2D_FGPFC_ALPHA_VALUE;
+
+  uint32_t DMA2D_FGC_BLUE;
+
+  uint32_t DMA2D_FGC_GREEN;
+
+  uint32_t DMA2D_FGC_RED;
+
+  uint32_t DMA2D_FGCMAR;
+} DMA2D_FG_InitTypeDef;
+
+
+typedef struct
+{
+  uint32_t DMA2D_BGMA;
+
+  uint32_t DMA2D_BGO;
+
+  uint32_t DMA2D_BGCM;
+
+  uint32_t DMA2D_BG_CLUT_CM;
+
+  uint32_t DMA2D_BG_CLUT_SIZE;
+
+  uint32_t DMA2D_BGPFC_ALPHA_MODE;
+
+  uint32_t DMA2D_BGPFC_ALPHA_VALUE;
+
+  uint32_t DMA2D_BGC_BLUE;
+
+  uint32_t DMA2D_BGC_GREEN;
+
+  uint32_t DMA2D_BGC_RED;
+
+  uint32_t DMA2D_BGCMAR;
+} DMA2D_BG_InitTypeDef;
+
+
+#define DMA2D_M2M                            ((uint32_t)0x00000000)
+#define DMA2D_M2M_PFC                        ((uint32_t)0x00010000)
+#define DMA2D_M2M_BLEND                      ((uint32_t)0x00020000)
+#define DMA2D_R2M                            ((uint32_t)0x00030000)
+
+#define IS_DMA2D_MODE(MODE) (((MODE) == DMA2D_M2M) || ((MODE) == DMA2D_M2M_PFC) || \
+                             ((MODE) == DMA2D_M2M_BLEND) || ((MODE) == DMA2D_R2M))
+
+
+#define DMA2D_ARGB8888                       ((uint32_t)0x00000000)
+#define DMA2D_RGB888                         ((uint32_t)0x00000001)
+#define DMA2D_RGB565                         ((uint32_t)0x00000002)
+#define DMA2D_ARGB1555                       ((uint32_t)0x00000003)
+#define DMA2D_ARGB4444                       ((uint32_t)0x00000004)
+
+#define IS_DMA2D_CMODE(MODE_ARGB) (((MODE_ARGB) == DMA2D_ARGB8888) || ((MODE_ARGB) == DMA2D_RGB888) || \
+                                   ((MODE_ARGB) == DMA2D_RGB565) || ((MODE_ARGB) == DMA2D_ARGB1555) || \
+                                   ((MODE_ARGB) == DMA2D_ARGB4444))
+
+
+#define DMA2D_Output_Color                 ((uint32_t)0x000000FF)
+
+#define IS_DMA2D_OGREEN(OGREEN) ((OGREEN) <= DMA2D_Output_Color)
+#define IS_DMA2D_ORED(ORED)     ((ORED) <= DMA2D_Output_Color)
+#define IS_DMA2D_OBLUE(OBLUE)   ((OBLUE) <= DMA2D_Output_Color)
+#define IS_DMA2D_OALPHA(OALPHA) ((OALPHA) <= DMA2D_Output_Color)
+
+
+#define DMA2D_OUTPUT_OFFSET      ((uint32_t)0x00003FFF)
+
+#define IS_DMA2D_OUTPUT_OFFSET(OOFFSET) ((OOFFSET) <= DMA2D_OUTPUT_OFFSET)
+
+
+#define DMA2D_pixel          ((uint32_t)0x00003FFF)
+#define DMA2D_Line           ((uint32_t)0x0000FFFF)
+
+#define IS_DMA2D_LINE(LINE)  ((LINE) <= DMA2D_Line)
+#define IS_DMA2D_PIXEL(PIXEL) ((PIXEL) <= DMA2D_pixel)
+
+
+#define OFFSET               ((uint32_t)0x00003FFF)
+
+#define IS_DMA2D_FGO(FGO)  ((FGO) <= OFFSET)
+
+#define IS_DMA2D_BGO(BGO)  ((BGO) <= OFFSET)
+
+
+#define CM_ARGB8888        ((uint32_t)0x00000000)
+#define CM_RGB888          ((uint32_t)0x00000001)
+#define CM_RGB565          ((uint32_t)0x00000002)
+#define CM_ARGB1555        ((uint32_t)0x00000003)
+#define CM_ARGB4444        ((uint32_t)0x00000004)
+#define CM_L8              ((uint32_t)0x00000005)
+#define CM_AL44            ((uint32_t)0x00000006)
+#define CM_AL88            ((uint32_t)0x00000007)
+#define CM_L4              ((uint32_t)0x00000008)
+#define CM_A8              ((uint32_t)0x00000009)
+#define CM_A4              ((uint32_t)0x0000000A)
+
+#define IS_DMA2D_FGCM(FGCM) (((FGCM) == CM_ARGB8888) || ((FGCM) == CM_RGB888) || \
+                             ((FGCM) == CM_RGB565) || ((FGCM) == CM_ARGB1555) || \
+                             ((FGCM) == CM_ARGB4444) || ((FGCM) == CM_L8) || \
+                             ((FGCM) == CM_AL44) || ((FGCM) == CM_AL88) || \
+                             ((FGCM) == CM_L4) || ((FGCM) == CM_A8) || \
+                             ((FGCM) == CM_A4))
+
+#define IS_DMA2D_BGCM(BGCM) (((BGCM) == CM_ARGB8888) || ((BGCM) == CM_RGB888) || \
+                             ((BGCM) == CM_RGB565) || ((BGCM) == CM_ARGB1555) || \
+                             ((BGCM) == CM_ARGB4444) || ((BGCM) == CM_L8) || \
+                             ((BGCM) == CM_AL44) || ((BGCM) == CM_AL88) || \
+                             ((BGCM) == CM_L4) || ((BGCM) == CM_A8) || \
+                             ((BGCM) == CM_A4))
+
+
+#define CLUT_CM_ARGB8888        ((uint32_t)0x00000000)
+#define CLUT_CM_RGB888          ((uint32_t)0x00000001)
+
+#define IS_DMA2D_FG_CLUT_CM(FG_CLUT_CM) (((FG_CLUT_CM) == CLUT_CM_ARGB8888) || ((FG_CLUT_CM) == CLUT_CM_RGB888))
+
+#define IS_DMA2D_BG_CLUT_CM(BG_CLUT_CM) (((BG_CLUT_CM) == CLUT_CM_ARGB8888) || ((BG_CLUT_CM) == CLUT_CM_RGB888))
+
+
+#define COLOR_VALUE             ((uint32_t)0x000000FF)
+
+#define IS_DMA2D_FG_CLUT_SIZE(FG_CLUT_SIZE) ((FG_CLUT_SIZE) <= COLOR_VALUE)
+
+#define IS_DMA2D_FG_ALPHA_VALUE(FG_ALPHA_VALUE) ((FG_ALPHA_VALUE) <= COLOR_VALUE)
+#define IS_DMA2D_FGC_BLUE(FGC_BLUE) ((FGC_BLUE) <= COLOR_VALUE)
+#define IS_DMA2D_FGC_GREEN(FGC_GREEN) ((FGC_GREEN) <= COLOR_VALUE)
+#define IS_DMA2D_FGC_RED(FGC_RED) ((FGC_RED) <= COLOR_VALUE)
+
+#define IS_DMA2D_BG_CLUT_SIZE(BG_CLUT_SIZE) ((BG_CLUT_SIZE) <= COLOR_VALUE)
+
+#define IS_DMA2D_BG_ALPHA_VALUE(BG_ALPHA_VALUE) ((BG_ALPHA_VALUE) <= COLOR_VALUE)
+#define IS_DMA2D_BGC_BLUE(BGC_BLUE) ((BGC_BLUE) <= COLOR_VALUE)
+#define IS_DMA2D_BGC_GREEN(BGC_GREEN) ((BGC_GREEN) <= COLOR_VALUE)
+#define IS_DMA2D_BGC_RED(BGC_RED) ((BGC_RED) <= COLOR_VALUE)
+
+
+#define NO_MODIF_ALPHA_VALUE       ((uint32_t)0x00000000)
+#define REPLACE_ALPHA_VALUE        ((uint32_t)0x00000001)
+#define COMBINE_ALPHA_VALUE        ((uint32_t)0x00000002)
+
+#define IS_DMA2D_FG_ALPHA_MODE(FG_ALPHA_MODE) (((FG_ALPHA_MODE) ==  NO_MODIF_ALPHA_VALUE) || \
+                                              ((FG_ALPHA_MODE) == REPLACE_ALPHA_VALUE) || \
+                                              ((FG_ALPHA_MODE) == COMBINE_ALPHA_VALUE))
+
+#define IS_DMA2D_BG_ALPHA_MODE(BG_ALPHA_MODE) (((BG_ALPHA_MODE) ==  NO_MODIF_ALPHA_VALUE) || \
+                                              ((BG_ALPHA_MODE) == REPLACE_ALPHA_VALUE) || \
+                                              ((BG_ALPHA_MODE) == COMBINE_ALPHA_VALUE))
+
+
+#define DMA2D_IT_CE                      DMA2D_CR_CEIE
+#define DMA2D_IT_CTC                     DMA2D_CR_CTCIE
+#define DMA2D_IT_CAE                     DMA2D_CR_CAEIE
+#define DMA2D_IT_TW                      DMA2D_CR_TWIE
+#define DMA2D_IT_TC                      DMA2D_CR_TCIE
+#define DMA2D_IT_TE                      DMA2D_CR_TEIE
+
+#define IS_DMA2D_IT(IT) (((IT) == DMA2D_IT_CTC) || ((IT) == DMA2D_IT_CAE) || \
+                        ((IT) == DMA2D_IT_TW) || ((IT) == DMA2D_IT_TC) || \
+                        ((IT) == DMA2D_IT_TE) || ((IT) == DMA2D_IT_CE))
+
+
+#define DMA2D_FLAG_CE                      DMA2D_ISR_CEIF
+#define DMA2D_FLAG_CTC                     DMA2D_ISR_CTCIF
+#define DMA2D_FLAG_CAE                     DMA2D_ISR_CAEIF
+#define DMA2D_FLAG_TW                      DMA2D_ISR_TWIF
+#define DMA2D_FLAG_TC                      DMA2D_ISR_TCIF
+#define DMA2D_FLAG_TE                      DMA2D_ISR_TEIF
+
+
+#define IS_DMA2D_GET_FLAG(FLAG) (((FLAG) == DMA2D_FLAG_CTC) || ((FLAG) == DMA2D_FLAG_CAE) || \
+                                ((FLAG) == DMA2D_FLAG_TW) || ((FLAG) == DMA2D_FLAG_TC) || \
+                                ((FLAG) == DMA2D_FLAG_TE) || ((FLAG) == DMA2D_FLAG_CE))
+
+
+#define DEADTIME                  ((uint32_t)0x000000FF)
+
+#define IS_DMA2D_DEAD_TIME(DEAD_TIME) ((DEAD_TIME) <= DEADTIME)
+
+
+#define LINE_WATERMARK            DMA2D_LWR_LW
+
+#define IS_DMA2D_LineWatermark(LineWatermark) ((LineWatermark) <= LINE_WATERMARK)
+
+
+void DMA2D_DeInit(void);
+
+
+void DMA2D_Init(DMA2D_InitTypeDef* DMA2D_InitStruct);
+void DMA2D_StructInit(DMA2D_InitTypeDef* DMA2D_InitStruct);
+void DMA2D_StartTransfer(void);
+void DMA2D_AbortTransfer(void);
+void DMA2D_Suspend(FunctionalState NewState);
+void DMA2D_FGConfig(DMA2D_FG_InitTypeDef* DMA2D_FG_InitStruct);
+void DMA2D_FG_StructInit(DMA2D_FG_InitTypeDef* DMA2D_FG_InitStruct);
+void DMA2D_BGConfig(DMA2D_BG_InitTypeDef* DMA2D_BG_InitStruct);
+void DMA2D_BG_StructInit(DMA2D_BG_InitTypeDef* DMA2D_BG_InitStruct);
+void DMA2D_FGStart(FunctionalState NewState);
+void DMA2D_BGStart(FunctionalState NewState);
+void DMA2D_DeadTimeConfig(uint32_t DMA2D_DeadTime, FunctionalState NewState);
+void DMA2D_LineWatermarkConfig(uint32_t DMA2D_LWatermarkConfig);
+
+
+void DMA2D_ITConfig(uint32_t DMA2D_IT, FunctionalState NewState);
+FlagStatus DMA2D_GetFlagStatus(uint32_t DMA2D_FLAG);
+void DMA2D_ClearFlag(uint32_t DMA2D_FLAG);
+ITStatus DMA2D_GetITStatus(uint32_t DMA2D_IT);
+void DMA2D_ClearITPendingBit(uint32_t DMA2D_IT);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
