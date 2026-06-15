@@ -5,6 +5,7 @@ echo  'KERNEL=="ttyACM*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4",ATTR
 echo  'KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60",ATTRS{serial}=="0001", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_lidar"' >/etc/udev/rules.d/rai_lidar.rules
 echo  'KERNEL=="ttyCH343USB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4",ATTRS{serial}=="0001", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_lidar"' >/etc/udev/rules.d/rai_lidar2.rules
 echo  'KERNEL=="ttyACM*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4",ATTRS{serial}=="0001", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_lidar"' >/etc/udev/rules.d/rai_lidar3.rules
+echo  'KERNEL=="ttyACM*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4",ATTRS{serial}=="5AA6052218", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_lidar"' >/etc/udev/rules.d/rai_lidar_wch.rules
 
 echo  'KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60",ATTRS{serial}=="0003", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_FDI_IMU_GNSS"' >/etc/udev/rules.d/rai_fdi_imu_gnss.rules
 echo  'KERNEL=="ttyCH343USB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4",ATTRS{serial}=="0003", MODE:="0777", GROUP:="dialout", SYMLINK+="rai_FDI_IMU_GNSS"' >/etc/udev/rules.d/rai_fdi_imu_gnss2.rules
