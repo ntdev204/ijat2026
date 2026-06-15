@@ -44,6 +44,19 @@ void HumanSemanticLayer::matchSize()
             master->getResolution(), master->getOriginX(), master->getOriginY());
 }
 
+void HumanSemanticLayer::reset()
+{
+  std::lock_guard<std::mutex> lock(data_mutex_);
+  latest_human_states_ = canmpc_msgs::msg::HumanStates();
+  resetMaps();
+  current_ = true;
+}
+
+bool HumanSemanticLayer::isClearable()
+{
+  return true;
+}
+
 void HumanSemanticLayer::humanStatesCallback(const canmpc_msgs::msg::HumanStates::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(data_mutex_);
