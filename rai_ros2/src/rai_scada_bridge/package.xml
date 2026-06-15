@@ -15,9 +15,6 @@
   <depend>tf2_ros</depend>
   <depend>nav2_msgs</depend>
   <depend>slam_toolbox</depend>
-
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <export>
     <build_type>ament_python</build_type>
   </export>

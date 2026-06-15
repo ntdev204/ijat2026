@@ -11,9 +11,6 @@
   <maintainer email="thientn204@utc.edu.vn">Nguyen Ngoc Thien</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>nav_msgs</depend>

@@ -22,7 +22,6 @@
   <depend>pluginlib</depend>
   <depend>canmpc_msgs</depend>
   <depend>ament_index_cpp</depend>
-  <depend>casadi</depend>
   <depend>eigen</depend>
 
   <!-- Testing dependencies -->

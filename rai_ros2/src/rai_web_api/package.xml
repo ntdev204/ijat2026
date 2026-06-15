@@ -7,8 +7,6 @@
   <maintainer email="thientn204@utc.edu.vn">Nguyen Ngoc Thien</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
@@ -19,7 +17,6 @@
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <exec_depend>python3-sqlalchemy</exec_depend>
-  <exec_depend>python3-asyncpg</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
