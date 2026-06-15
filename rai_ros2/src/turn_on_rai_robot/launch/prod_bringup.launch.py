@@ -32,7 +32,6 @@ def generate_launch_description():
              'pkill -9 -f "bt_navigator" 2>/dev/null || true; '
              'pkill -9 -f "controller_server" 2>/dev/null || true; '
              'pkill -9 -f "planner_server" 2>/dev/null || true; '
-             'pkill -9 -f "ldlidar" 2>/dev/null || true; '
              'echo "[cleanup] Waiting for processes to terminate..."; '
              'sleep 2; '
              'echo "[cleanup] Cleanup complete."'],

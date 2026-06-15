@@ -49,7 +49,6 @@ def generate_launch_description():
              'pkill -9 -x "ekf_node" 2>/dev/null || true; '
              'pkill -9 -f "slam_toolbox" 2>/dev/null || true; '
              'pkill -9 -f "nav2" 2>/dev/null || true; '
-             'pkill -9 -f "ldlidar" 2>/dev/null || true; '
              'pkill -9 -f "astra" 2>/dev/null || true; '
              'echo "[dataset_collection] Waiting 2 seconds..."; '
              'sleep 2; '
