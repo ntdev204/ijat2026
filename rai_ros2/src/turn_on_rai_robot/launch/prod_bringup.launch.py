@@ -19,32 +19,8 @@ def generate_launch_description():
         description='IP address or hostname of the adaptive runtime on Jetson',
     )
 
-    # Cleanup: Kill all existing ROS2 processes and nodes (no service stop)
-    cleanup_all = ExecuteProcess(
-        cmd=['bash', '-c',
-             'echo "[cleanup] Killing ROS2 processes..."; '
-             'pkill -9 -x "rai_robot_node" 2>/dev/null || true; '
-             'pkill -9 -x "lslidar_driver_node" 2>/dev/null || true; '
-             'pkill -9 -x "scada_bridge" 2>/dev/null || true; '
-             'pkill -9 -x "web_api" 2>/dev/null || true; '
-             'pkill -9 -x "ekf_node" 2>/dev/null || true; '
-             'pkill -9 -f "slam_toolbox" 2>/dev/null || true; '
-             'pkill -9 -f "nav2" 2>/dev/null || true; '
-             'pkill -9 -f "amcl" 2>/dev/null || true; '
-             'pkill -9 -f "bt_navigator" 2>/dev/null || true; '
-             'pkill -9 -f "controller_server" 2>/dev/null || true; '
-             'pkill -9 -f "planner_server" 2>/dev/null || true; '
-             'echo "[cleanup] Waiting for processes to terminate..."; '
-             'sleep 2; '
-             'echo "[cleanup] Cleanup complete."'],
-        output='screen',
-    )
-
     return LaunchDescription([
         adaptive_host_arg,
-
-        # 0. Cleanup: Kill all processes and nodes
-        cleanup_all,
 
         # 1. Base Hardware Layer (Chassis, Lidar, IMU, EKF, TF)
         TimerAction(
