@@ -4,6 +4,7 @@ import threading
 import time
 import base64
 import rclpy
+import tf2_ros
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.action import ActionClient
@@ -11,7 +12,7 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
-from std_msgs.msg import Float32, Float32MultiArray, String
+from std_msgs.msg import Bool, Float32, Float32MultiArray, String
 
 try:
     from nav2_msgs.action import NavigateToPose
@@ -40,6 +41,7 @@ class WebBridgeNode(Node):
                 "angular_z": 0.0,
             },
             "battery": {"voltage": 0.0, "percentage": 0.0},
+            "charging": False,
             "context": {
                 "legacy_context": "OZ",
                 "phi_h": 0.0,
@@ -49,10 +51,13 @@ class WebBridgeNode(Node):
                 "vy_max": 0.5,
                 "omega_max": 1.0,
                 "occlusion_flag": False,
+                "navigation_mode": "idle",
             },
             "humans": [],
             "solver": {},
             "lidar_clearance": {"left": 5.0, "right": 5.0},
+            "map_pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+            "map_info": None,
             "last_update": 0.0
         }
 
@@ -100,8 +105,14 @@ class WebBridgeNode(Node):
         # Permanent Publishers/Clients
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.voltage_sub = self.create_subscription(
-            Float32, '/voltage', self.voltage_callback, self.reliable_qos
+            Float32, '/PowerVoltage', self.voltage_callback, self.reliable_qos
         )
+        self.charging_sub = self.create_subscription(
+            Bool, '/robot_charging_flag', self.charging_callback, self.reliable_qos
+        )
+
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Nav2 Action Client
         if NAV2_AVAILABLE:
@@ -114,6 +125,7 @@ class WebBridgeNode(Node):
         # Camera frame cache (cho WebRTC)
         self.latest_camera_frame = None
         self.camera_frame_event = threading.Event()
+        self.create_timer(0.1, self.update_map_pose)
 
         self.get_logger().info("WebBridgeNode initialized.")
 
@@ -141,7 +153,7 @@ class WebBridgeNode(Node):
             )
         if self.odom_sub is None:
             self.odom_sub = self.create_subscription(
-                Odometry, '/odom', self.odom_callback, self.reliable_qos
+                Odometry, '/odom_combined', self.odom_callback, self.reliable_qos
             )
         if self.context_sub is None:
             self.context_sub = self.create_subscription(
@@ -279,6 +291,15 @@ class WebBridgeNode(Node):
                     "grid_data": grid_base64,
                     "timestamp": time.time()
                 }
+                self.telemetry["map_info"] = {
+                    "resolution": msg.info.resolution,
+                    "width": msg.info.width,
+                    "height": msg.info.height,
+                    "origin": {
+                        "x": msg.info.origin.position.x,
+                        "y": msg.info.origin.position.y,
+                    },
+                }
         except Exception as e:
             self.get_logger().error(f"Error in map_callback: {e}")
 
@@ -313,6 +334,10 @@ class WebBridgeNode(Node):
             else:
                 pct = (v - 20.0) / 5.2 * 100.0
             self.telemetry["battery"]["percentage"] = round(pct, 1)
+
+    def charging_callback(self, msg: Bool):
+        with self.lock:
+            self.telemetry["charging"] = bool(msg.data)
 
     def odom_callback(self, msg: Odometry):
         """Callback nhận odom và tính toán toạ độ Pose"""
@@ -396,6 +421,23 @@ class WebBridgeNode(Node):
             self.latest_camera_frame = msg
             self.camera_frame_event.set()
         # No lock needed for event set – it is thread‑safe.
+
+    def update_map_pose(self):
+        try:
+            transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            return
+
+        q = transform.transform.rotation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        yaw = round(math.atan2(siny_cosp, cosy_cosp), 3)
+        with self.lock:
+            self.telemetry["map_pose"] = {
+                "x": round(transform.transform.translation.x, 3),
+                "y": round(transform.transform.translation.y, 3),
+                "yaw": yaw,
+            }
 
 
     # --- ACTIONS & COMMANDS ---

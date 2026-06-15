@@ -61,7 +61,7 @@ class RaiControlNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
 
-        self.create_subscription(Odometry, 'odom', self.odom_cb, 10)
+        self.create_subscription(Odometry, 'odom_combined', self.odom_cb, 10)
         self.create_subscription(Imu, 'imu/data_raw', self.imu_cb, 10)
         self.create_subscription(Float32, '/PowerVoltage', self.voltage_cb, 10)
         self.create_subscription(Bool, '/robot_charging_flag', self.charging_cb, 10)
@@ -134,6 +134,8 @@ class RaiControlNode(Node):
         self._last_map_msg = None
         self._managed_processes = {}
         self._current_map_path = None
+        self._nav2_local_planner = "CA_NMPC"
+        self._nav2_global_planner = "A_STAR"
 
         self._patrol_status = "idle"
         self._patrol_phase = "idle"
@@ -452,13 +454,22 @@ class RaiControlNode(Node):
             slam_stop = self._stop_managed_process("slam")
             nav2_stop = self._stop_managed_process("nav2")
             self._current_map_path = map_path or self._current_map_path
-            command = self._format_command(self._nav2_start_cmd, map=self._current_map_path or "")
+            local_planner = getattr(self, "_nav2_local_planner", "CA_NMPC")
+            global_planner = getattr(self, "_nav2_global_planner", "A_STAR")
+            command = self._format_command(
+                self._nav2_start_cmd,
+                map=self._current_map_path or "",
+                local_planner=local_planner,
+                global_planner=global_planner,
+            )
             nav2_start = self._start_managed_process("nav2", command)
             self.telemetry_data["navigation_mode"] = "nav2"
             return {
                 "status": "ok",
                 "mode": "nav2",
                 "map_path": self._current_map_path,
+                "local_planner": local_planner,
+                "global_planner": global_planner,
                 "slam": slam_stop,
                 "nav2_stop": nav2_stop,
                 "nav2": nav2_start,
@@ -468,6 +479,10 @@ class RaiControlNode(Node):
 
     def _control_nav2(self, payload: dict):
         nav2_action = str(payload.get("action", "")).lower()
+        local_planner = str(payload.get("local_planner") or "CA_NMPC").upper()
+        global_planner = str(payload.get("global_planner") or "A_STAR").upper()
+        self._nav2_local_planner = local_planner
+        self._nav2_global_planner = global_planner
         if nav2_action == "start":
             map_path = payload.get("map_path") or payload.get("source")
             return self._switch_navigation_mode("nav2", map_path)

@@ -9,6 +9,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     rai_scada_bridge_dir = get_package_share_directory('rai_scada_bridge')
+    rai_web_api_dir = get_package_share_directory('rai_web_api')
     rai_launch_dir = get_package_share_directory('turn_on_rai_robot')
     rai_slam_dir = get_package_share_directory('rai_slam_toolbox')
 
@@ -25,6 +26,7 @@ def generate_launch_description():
              'pkill -9 -x "rai_robot_node" 2>/dev/null || true; '
              'pkill -9 -x "lslidar_driver_node" 2>/dev/null || true; '
              'pkill -9 -x "scada_bridge" 2>/dev/null || true; '
+             'pkill -9 -x "web_api" 2>/dev/null || true; '
              'pkill -9 -x "ekf_node" 2>/dev/null || true; '
              'pkill -9 -f "slam_toolbox" 2>/dev/null || true; '
              'pkill -9 -f "nav2" 2>/dev/null || true; '
@@ -82,6 +84,22 @@ def generate_launch_description():
                     PythonLaunchDescriptionSource(
                         os.path.join(rai_scada_bridge_dir, 'launch', 'scada_bridge.launch.py')
                     )
+                ),
+            ]
+        ),
+
+        # 4. FastAPI bridge used by rai_website
+        TimerAction(
+            period=8.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(
+                        os.path.join(rai_web_api_dir, 'launch', 'web_api.launch.py')
+                    ),
+                    launch_arguments={
+                        'host': '0.0.0.0',
+                        'port': '8080',
+                    }.items(),
                 ),
             ]
         ),

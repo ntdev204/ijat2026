@@ -13,15 +13,19 @@ def generate_launch_description():
     bringup_dir = get_package_share_directory('turn_on_rai_robot')
     launch_dir = os.path.join(bringup_dir, 'launch')
 
-
     rai_robot = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'turn_on_rai_robot.launch.py')),
+    )
+
+    camera_ros = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rai_camera.launch.py')),
     )
 
     lidar_ros = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rai_lidar.launch.py')),
     )
+
     return LaunchDescription([
-        rai_robot, lidar_ros]
+        rai_robot, camera_ros, lidar_ros]
     )
 

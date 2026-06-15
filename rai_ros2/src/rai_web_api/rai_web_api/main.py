@@ -2,14 +2,19 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import shutil
+import subprocess
 import threading
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import rclpy
 import uvicorn
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +47,28 @@ bridge_node: Optional[WebBridgeNode] = None
 spin_thread: Optional[threading.Thread] = None
 peer_connections: set[RTCPeerConnection] = set()
 active_dataset_run_id: Optional[int] = None
+nav2_process: Optional[subprocess.Popen] = None
+slam_process: Optional[subprocess.Popen] = None
+
+NAV2_LOCAL_PLANNER_OPTIONS = [
+    {"id": "CA_NMPC", "label": "CA-NMPC", "plugin": "rai_canmpc_controller::CANMPCController", "native": True},
+    {"id": "NMPC", "label": "NMPC", "plugin": "rai_canmpc_controller::CANMPCController", "native": False},
+    {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
+    {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
+    {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
+]
+NAV2_GLOBAL_PLANNER_OPTIONS = [
+    {"id": "A_STAR", "label": "A*", "plugin": "nav2_navfn_planner/NavfnPlanner"},
+    {"id": "DIJKSTRA", "label": "Dijkstra", "plugin": "nav2_navfn_planner/NavfnPlanner"},
+    {"id": "HYBRID_ASTAR", "label": "Hybrid A*", "plugin": "nav2_smac_planner/SmacPlannerHybrid"},
+]
+nav2_runtime_config = {
+    "local_planner": os.getenv("RAI_NAV2_LOCAL_PLANNER", "CA_NMPC").upper(),
+    "global_planner": os.getenv("RAI_NAV2_GLOBAL_PLANNER", "A_STAR").upper(),
+    "map_path": os.getenv("RAI_NAV2_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
+    "params_path": os.getenv("RAI_NAV2_PARAMS", ""),
+    "last_command": None,
+}
 
 training_state = {
     "running": False,
@@ -81,6 +108,7 @@ class DatasetStartRequest(BaseModel):
 
 class DatasetCaptureRequest(BaseModel):
     tag: str = Field(default="corridor")
+    class_name: str = Field(default="person")
 
 
 class TrainStartRequest(BaseModel):
@@ -92,6 +120,79 @@ class TrainStartRequest(BaseModel):
 
 class SaveMapRequest(BaseModel):
     name: str = Field(..., min_length=1)
+
+
+class Nav2ConfigRequest(BaseModel):
+    local_planner: str = Field(default="CA_NMPC")
+    global_planner: str = Field(default="A_STAR")
+    map_path: Optional[str] = None
+    map_id: Optional[int] = None
+    params_path: Optional[str] = None
+
+
+def _nav2_package_share() -> Path:
+    return Path(get_package_share_directory("rai_robot_nav2")).resolve()
+
+
+def _default_nav2_params_path() -> Path:
+    package_share = _nav2_package_share()
+    return package_share / "param" / "rai_params" / "canmpc_mec_nav2.yaml"
+
+
+def _default_nav2_map_path() -> Path:
+    data_path = Path("/home/rai/rai_ros2/data/map/RAI.yaml")
+    if data_path.exists():
+        return data_path
+    return _nav2_package_share() / "map" / "RAI.yaml"
+
+
+def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_params_path: Path) -> Path:
+    with base_params_path.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+
+    controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
+    planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
+    controller_params["selected_local_planner"] = local_planner
+    planner_params["selected_global_planner"] = global_planner
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="rai_web_api_nav2_"))
+    params_path = temp_dir / "nav2_runtime.yaml"
+    with params_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config, handle, sort_keys=False)
+    return params_path
+
+
+def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, global_planner: str) -> str:
+    return (
+        "ros2 launch rai_robot_nav2 rai_nav2.launch.py "
+        f"map:={map_path} params:={params_path} "
+        f"local_planner:={local_planner} global_planner:={global_planner}"
+    )
+
+
+def _start_process(command: str) -> subprocess.Popen:
+    kwargs = {}
+    if hasattr(os, "setsid"):
+        kwargs["preexec_fn"] = os.setsid
+    return subprocess.Popen(command, shell=True, **kwargs)
+
+
+def _stop_process(process: Optional[subprocess.Popen]) -> dict:
+    if process is None or process.poll() is not None:
+        return {"status": "stopped", "message": "not running"}
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        else:
+            process.terminate()
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        if hasattr(os, "killpg"):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        else:
+            process.kill()
+        process.wait(timeout=2.0)
+    return {"status": "stopped", "pid": process.pid}
 
 
 def _spin_ros_node() -> None:
@@ -110,15 +211,25 @@ async def startup() -> None:
     spin_thread = threading.Thread(target=_spin_ros_node, daemon=True)
     spin_thread.start()
     DATASET_BASE_PATH.mkdir(parents=True, exist_ok=True)
+    if not nav2_runtime_config["params_path"]:
+        nav2_runtime_config["params_path"] = str(_default_nav2_params_path())
+    if not Path(nav2_runtime_config["map_path"]).exists():
+        nav2_runtime_config["map_path"] = str(_default_nav2_map_path())
     logger.info("Rai Web API started on robot.")
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    global nav2_process, slam_process
     close_tasks = [pc.close() for pc in list(peer_connections)]
     if close_tasks:
         await asyncio.gather(*close_tasks, return_exceptions=True)
     peer_connections.clear()
+
+    _stop_process(nav2_process)
+    _stop_process(slam_process)
+    nav2_process = None
+    slam_process = None
 
     if bridge_node is not None:
         bridge_node.destroy_node()
@@ -300,14 +411,126 @@ async def cancel_nav_goal() -> dict:
     return {"success": True}
 
 
+@app.get("/api/nav2/options")
+async def nav2_options() -> dict:
+    return {
+        "local_planners": NAV2_LOCAL_PLANNER_OPTIONS,
+        "global_planners": NAV2_GLOBAL_PLANNER_OPTIONS,
+    }
+
+
+@app.get("/api/nav2/config")
+async def nav2_config() -> dict:
+    global nav2_process
+    return {
+        **nav2_runtime_config,
+        "running": nav2_process is not None and nav2_process.poll() is None,
+    }
+
+
+@app.post("/api/nav2/config")
+async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    local_planner = request.local_planner.upper()
+    global_planner = request.global_planner.upper()
+    if local_planner not in {item["id"] for item in NAV2_LOCAL_PLANNER_OPTIONS}:
+        raise HTTPException(status_code=400, detail=f"Unsupported local planner: {local_planner}")
+    if global_planner not in {item["id"] for item in NAV2_GLOBAL_PLANNER_OPTIONS}:
+        raise HTTPException(status_code=400, detail=f"Unsupported global planner: {global_planner}")
+
+    if request.map_id is not None:
+        saved_map = await db.get(SavedMap, request.map_id)
+        if saved_map is None:
+            raise HTTPException(status_code=404, detail="Saved map not found")
+        raise HTTPException(
+            status_code=400,
+            detail="Database-saved maps do not contain a reusable Nav2 YAML path yet. Provide map_path instead.",
+        )
+
+    if request.map_path:
+        nav2_runtime_config["map_path"] = request.map_path
+    if request.params_path:
+        nav2_runtime_config["params_path"] = request.params_path
+    nav2_runtime_config["local_planner"] = local_planner
+    nav2_runtime_config["global_planner"] = global_planner
+    return await nav2_config()
+
+
+@app.post("/api/nav2/start")
+async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
+    global nav2_process
+    if nav2_process is not None and nav2_process.poll() is None:
+        return {"success": True, "message": "Nav2 is already running", **(await nav2_config())}
+
+    map_path = Path(nav2_runtime_config["map_path"] or _default_nav2_map_path())
+    if not map_path.exists():
+        fallback_map = _default_nav2_map_path()
+        if fallback_map.exists():
+            map_path = fallback_map
+            nav2_runtime_config["map_path"] = str(fallback_map)
+        else:
+            raise HTTPException(status_code=404, detail=f"Map file not found: {map_path}")
+
+    base_params_path = Path(nav2_runtime_config["params_path"] or _default_nav2_params_path())
+    if not base_params_path.exists():
+        raise HTTPException(status_code=404, detail=f"Nav2 params file not found: {base_params_path}")
+
+    runtime_params_path = _runtime_nav2_params_path(
+        nav2_runtime_config["local_planner"],
+        nav2_runtime_config["global_planner"],
+        base_params_path,
+    )
+    command = _nav2_launch_command(
+        map_path,
+        runtime_params_path,
+        nav2_runtime_config["local_planner"],
+        nav2_runtime_config["global_planner"],
+    )
+    nav2_process = _start_process(command)
+    nav2_runtime_config["last_command"] = command
+    if bridge_node is not None:
+        with bridge_node.lock:
+            bridge_node.telemetry["context"]["navigation_mode"] = "nav2"
+    return {
+        "success": True,
+        "pid": nav2_process.pid,
+        "command": command,
+        **(await nav2_config()),
+    }
+
+
+@app.post("/api/nav2/stop")
+async def stop_nav2_stack() -> dict:
+    global nav2_process
+    result = _stop_process(nav2_process)
+    nav2_process = None
+    if bridge_node is not None:
+        with bridge_node.lock:
+            bridge_node.telemetry["context"]["navigation_mode"] = "idle"
+    return {"success": True, **result, **(await nav2_config())}
+
+
 @app.post("/api/robot/slam/start")
 async def start_slam() -> dict:
-    return {"success": True, "message": "Start SLAM through robot bringup/launch supervision."}
+    global slam_process
+    if slam_process is not None and slam_process.poll() is None:
+        return {"success": True, "message": "SLAM is already running"}
+    command = "ros2 launch rai_slam_toolbox online_async_launch.py"
+    slam_process = _start_process(command)
+    if bridge_node is not None:
+        with bridge_node.lock:
+            bridge_node.telemetry["context"]["navigation_mode"] = "slam"
+    return {"success": True, "message": "SLAM launch started", "pid": slam_process.pid, "command": command}
 
 
 @app.post("/api/robot/slam/stop")
 async def stop_slam() -> dict:
-    return {"success": True, "message": "Stop SLAM through robot bringup/launch supervision."}
+    global slam_process
+    result = _stop_process(slam_process)
+    slam_process = None
+    if bridge_node is not None:
+        with bridge_node.lock:
+            bridge_node.telemetry["context"]["navigation_mode"] = "idle"
+    return {"success": True, "message": "SLAM stopped", **result}
 
 
 @app.post("/api/map/save")
@@ -395,15 +618,16 @@ async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
 
 @app.post("/api/dataset/capture")
 async def capture_dataset(request: DatasetCaptureRequest) -> dict:
-    # Mô phỏng quá trình chụp dữ liệu ảnh từ robot
-    logger.info(f"Simulating dataset capture for tag: {request.tag}")
-    await asyncio.sleep(0.3)  # Mô phỏng thời gian chờ camera capture
+    logger.info("Simulating dataset capture for tag=%s class=%s", request.tag, request.class_name)
+    await asyncio.sleep(0.3)
     return {
         "success": True,
-        "message": f"Successfully captured image and metadata with tag: {request.tag}",
+        "message": f"Captured image and metadata with tag={request.tag} class={request.class_name}",
         "timestamp": datetime.utcnow().isoformat(),
         "filename": f"capture_{request.tag}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.png",
         "tag": request.tag
+        ,
+        "class_name": request.class_name,
     }
 
 
