@@ -47,18 +47,23 @@ add_library(${PROJECT_NAME} SHARED
 )
 add_dependencies(${PROJECT_NAME} canmpc_solver)
 
+ament_target_dependencies(${PROJECT_NAME}
+  rclcpp
+  rclcpp_lifecycle
+  nav2_core
+  nav2_costmap_2d
+  nav2_util
+  geometry_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  pluginlib
+  canmpc_msgs
+  ament_index_cpp
+)
+
 target_link_libraries(${PROJECT_NAME}
-  rclcpp::rclcpp
-  rclcpp_lifecycle::rclcpp_lifecycle
-  nav2_core::nav2_core
-  nav2_costmap_2d::nav2_costmap_2d
-  nav2_util::nav2_util
-  geometry_msgs::geometry_msgs
-  nav_msgs::nav_msgs
-  tf2_ros::tf2_ros
-  pluginlib::pluginlib
-  canmpc_msgs::canmpc_msgs
-  ament_index_cpp::ament_index_cpp
   ${casadi_LIBRARIES}
 )
 
@@ -106,31 +111,30 @@ if(BUILD_TESTING)
   ament_add_gtest(test_mecanum_model test/test_mecanum_model.cpp)
   target_link_libraries(test_mecanum_model
     ${PROJECT_NAME}
-    rclcpp::rclcpp
   )
+  ament_target_dependencies(test_mecanum_model rclcpp)
   
   # Test Local Plan Handler
   ament_add_gtest(test_local_plan_handler test/test_local_plan_handler.cpp)
   target_link_libraries(test_local_plan_handler
     ${PROJECT_NAME}
-    rclcpp::rclcpp
   )
+  ament_target_dependencies(test_local_plan_handler rclcpp)
 
   # Test Solver Wrapper
   ament_add_gtest(test_solver_wrapper test/test_solver_wrapper.cpp)
   target_link_libraries(test_solver_wrapper
     ${PROJECT_NAME}
-    rclcpp::rclcpp
-    ament_index_cpp::ament_index_cpp
     ${casadi_LIBRARIES}
   )
+  ament_target_dependencies(test_solver_wrapper rclcpp ament_index_cpp)
 
   # Test Costmap Evaluator
   ament_add_gtest(test_costmap_evaluator test/test_costmap_evaluator.cpp)
   target_link_libraries(test_costmap_evaluator
     ${PROJECT_NAME}
-    rclcpp::rclcpp
   )
+  ament_target_dependencies(test_costmap_evaluator rclcpp)
 endif()
 
 ament_package()

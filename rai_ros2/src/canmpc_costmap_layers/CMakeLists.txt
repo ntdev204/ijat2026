@@ -24,11 +24,11 @@ add_library(${PROJECT_NAME} SHARED
   src/human_semantic_layer.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}
-  rclcpp::rclcpp
-  nav2_costmap_2d::nav2_costmap_2d
-  pluginlib::pluginlib
-  canmpc_msgs::canmpc_msgs
+ament_target_dependencies(${PROJECT_NAME}
+  rclcpp
+  nav2_costmap_2d
+  pluginlib
+  canmpc_msgs
 )
 
 # Export the plugin XML
