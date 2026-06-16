@@ -1,9 +1,0 @@
-<class_libraries>
-  <library path="rai_canmpc_controller">
-    <class name="rai_canmpc_controller/CANMPCController" type="rai_canmpc_controller::CANMPCController" base_class_type="nav2_core::Controller">
-      <description>
-        Continuous Context-Adaptive Nonlinear Model Predictive Controller (Mecanum kinematics, dynamic human avoidance).
-      </description>
-    </class>
-  </library>
-</class_libraries>

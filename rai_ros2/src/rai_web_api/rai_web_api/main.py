@@ -52,8 +52,8 @@ nav2_process: Optional[subprocess.Popen] = None
 slam_process: Optional[subprocess.Popen] = None
 
 NAV2_LOCAL_PLANNER_OPTIONS = [
-    {"id": "CA_NMPC", "label": "CA-NMPC", "plugin": "ca_nmpc_controller/CANMPCController", "native": True},
-    {"id": "NMPC", "label": "NMPC", "plugin": "ca_nmpc_controller/CANMPCController", "native": True},
+    {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
+    {"id": "NMPC", "label": "NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
     {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
     {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
     {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
@@ -64,7 +64,7 @@ NAV2_GLOBAL_PLANNER_OPTIONS = [
     {"id": "HYBRID_ASTAR", "label": "Hybrid A*", "plugin": "nav2_smac_planner/SmacPlannerHybrid"},
 ]
 nav2_runtime_config = {
-    "local_planner": os.getenv("RAI_NAV2_LOCAL_PLANNER", "CA_NMPC").upper(),
+    "local_planner": os.getenv("RAI_NAV2_LOCAL_PLANNER", "CCA_NMPC").upper(),
     "global_planner": os.getenv("RAI_NAV2_GLOBAL_PLANNER", "A_STAR").upper(),
     "map_path": os.getenv("RAI_NAV2_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
     "selected_map_id": None,
@@ -146,7 +146,7 @@ class UpdateMapRequest(BaseModel):
 
 
 class Nav2ConfigRequest(BaseModel):
-    local_planner: str = Field(default="CA_NMPC")
+    local_planner: str = Field(default="CCA_NMPC")
     global_planner: str = Field(default="A_STAR")
     map_path: Optional[str] = None
     map_id: Optional[int] = None

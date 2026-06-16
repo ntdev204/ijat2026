@@ -23,6 +23,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry, Path as NavPath
 from sensor_msgs.msg import CameraInfo, Image, JointState, LaserScan, Imu
 from std_msgs.msg import Float32, Float32MultiArray, String
 from tf2_msgs.msg import TFMessage
+from ccanmpc_msgs.msg import Context, HumanStates
 
 import rosbag2_py
 from rosbag2_py import ConverterOptions, StorageOptions, TopicMetadata
@@ -99,8 +100,10 @@ class DatasetCollectorNode(Node):
             ('/wheel_encoders', JointState, 'sensor_msgs/msg/JointState', reliable_qos),
             ('/voltage', Float32, 'std_msgs/msg/Float32', reliable_qos),
             ('/context', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/context', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/humans', String, 'std_msgs/msg/String', reliable_qos),
+            ('/canmpc/context', Context, 'ccanmpc_msgs/msg/Context', reliable_qos),
+            ('/canmpc/humans', HumanStates, 'ccanmpc_msgs/msg/HumanStates', reliable_qos),
+            ('/canmpc/context_json', String, 'std_msgs/msg/String', reliable_qos),
+            ('/canmpc/humans_json', String, 'std_msgs/msg/String', reliable_qos),
             ('/canmpc/adaptive_bounds', Float32MultiArray, 'std_msgs/msg/Float32MultiArray', reliable_qos),
             ('/canmpc/local_reference_path', NavPath, 'nav_msgs/msg/Path', reliable_qos),
             ('/canmpc/predicted_trajectory', NavPath, 'nav_msgs/msg/Path', reliable_qos),
@@ -295,8 +298,12 @@ class DatasetCollectorNode(Node):
         elif topic_name == '/voltage':
             self._handle_voltage(msg)
         elif topic_name == '/canmpc/context':
-            self._handle_context_json(msg.data)
+            self._handle_context_msg(msg)
         elif topic_name == '/canmpc/humans':
+            self._handle_humans_msg(msg)
+        elif topic_name == '/canmpc/context_json':
+            self._handle_context_json(msg.data)
+        elif topic_name == '/canmpc/humans_json':
             self._handle_humans_json(msg.data)
         elif topic_name == '/canmpc/adaptive_bounds':
             self._handle_adaptive_bounds(msg)
@@ -345,12 +352,51 @@ class DatasetCollectorNode(Node):
             context['occlusion_events'] += 1
         self.metadata['last_context'] = payload
 
+    def _handle_context_msg(self, msg: Context):
+        payload = {
+            'stamp': {'sec': msg.header.stamp.sec, 'nanosec': msg.header.stamp.nanosec},
+            'phi_h': float(msg.phi_h),
+            'd_h': float(msg.nearest_human_dist),
+            'd_safe': float(msg.d_safe),
+            'vx_max': float(msg.vx_max),
+            'vy_max': float(msg.vy_max),
+            'omega_max': float(msg.omega_max),
+            'occlusion_flag': bool(msg.occlusion_flag),
+        }
+        context = self.metadata['continuous_context']
+        self._append_if_number(context['phi_h_samples'], payload['phi_h'])
+        self._append_if_number(context['d_h_samples'], payload['d_h'])
+        self._append_if_number(context['d_safe_samples'], payload['d_safe'])
+        self._append_if_number(context['vx_max_samples'], payload['vx_max'])
+        self._append_if_number(context['vy_max_samples'], payload['vy_max'])
+        self._append_if_number(context['omega_max_samples'], payload['omega_max'])
+        if payload['occlusion_flag']:
+            context['occlusion_events'] += 1
+        self.metadata['last_context'] = payload
+
     def _handle_humans_json(self, data: str):
         payload = self._loads_json(data)
         if not payload:
             return
         self.metadata['human_state']['samples'] += 1
         self.metadata['human_state']['last'] = payload
+
+    def _handle_humans_msg(self, msg: HumanStates):
+        humans = []
+        for human in msg.humans:
+            humans.append({
+                'id': int(human.id),
+                'x': float(human.pose.position.x),
+                'y': float(human.pose.position.y),
+                'vx': float(human.velocity.linear.x),
+                'vy': float(human.velocity.linear.y),
+                'confidence': float(human.confidence),
+            })
+        self.metadata['human_state']['samples'] += 1
+        self.metadata['human_state']['last'] = {
+            'stamp': {'sec': msg.header.stamp.sec, 'nanosec': msg.header.stamp.nanosec},
+            'humans': humans,
+        }
 
     def _handle_adaptive_bounds(self, msg: Float32MultiArray):
         data = list(msg.data)

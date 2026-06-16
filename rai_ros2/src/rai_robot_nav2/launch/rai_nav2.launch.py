@@ -11,8 +11,8 @@ from launch_ros.actions import Node
 
 
 LOCAL_PLANNER_PRESETS = {
-    "CA_NMPC": {
-        "plugin": "ca_nmpc_controller/CANMPCController",
+    "CCA_NMPC": {
+        "plugin": "cca_nmpc_controller/CCANMPCController",
         "use_native_solver": True,
         "horizon_steps": 20,
         "model_dt": 0.05,
@@ -39,7 +39,7 @@ LOCAL_PLANNER_PRESETS = {
         "w_slack": 100000.0,
     },
     "NMPC": {
-        "plugin": "ca_nmpc_controller/CANMPCController",
+        "plugin": "cca_nmpc_controller/CCANMPCController",
         "use_native_solver": True,
         "horizon_steps": 20,
         "model_dt": 0.05,
@@ -257,7 +257,7 @@ def _write_runtime_params(context, *_args, **_kwargs):
     with open(params_path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
 
-    local_preset = LOCAL_PLANNER_PRESETS.get(local_planner, LOCAL_PLANNER_PRESETS["CA_NMPC"])
+    local_preset = LOCAL_PLANNER_PRESETS.get(local_planner, LOCAL_PLANNER_PRESETS["CCA_NMPC"])
     global_preset = GLOBAL_PLANNER_PRESETS.get(global_planner, GLOBAL_PLANNER_PRESETS["A_STAR"])
 
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
@@ -323,8 +323,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "local_planner",
-            default_value="CA_NMPC",
-            description="CA_NMPC | NMPC | MPPI | DWB | DWA",
+            default_value="CCA_NMPC",
+            description="CCA_NMPC | NMPC | MPPI | DWB | DWA",
         ),
         DeclareLaunchArgument(
             "global_planner",

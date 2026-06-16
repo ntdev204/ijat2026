@@ -3,8 +3,8 @@
 Continuous context estimator for CCA-NMPC dataset collection.
 
 This node replaces the old OZ/NC/HPZ classifier as the primary runtime signal.
-It publishes a continuous human-proximity score and adaptive bounds using
-standard messages so the dataset tools can run before custom canmpc_msgs exist.
+It publishes typed CCA-NMPC messages for the controller and legacy JSON mirrors
+for web and dataset tooling that still consumes compact dictionaries.
 """
 
 import json
@@ -21,6 +21,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, LaserScan
 from std_msgs.msg import Float32MultiArray, String
+from ccanmpc_msgs.msg import AdaptiveBounds, Context, HumanState, HumanStates
 
 
 class ContextMonitor(Node):
@@ -43,6 +44,7 @@ class ContextMonitor(Node):
         self.declare_parameter('vy_min_bound', 0.08)
         self.declare_parameter('omega_min_bound', 0.20)
         self.declare_parameter('publish_legacy_context', True)
+        self.declare_parameter('publish_pseudo_humans', False)
         self.declare_parameter('human_timeout_sec', 0.7)
 
         self.d0 = float(self.get_parameter('d0').value)
@@ -59,6 +61,7 @@ class ContextMonitor(Node):
         self.vy_min_bound = float(self.get_parameter('vy_min_bound').value)
         self.omega_min_bound = float(self.get_parameter('omega_min_bound').value)
         self.publish_legacy_context = bool(self.get_parameter('publish_legacy_context').value)
+        self.publish_pseudo_humans = bool(self.get_parameter('publish_pseudo_humans').value)
         self.human_timeout_sec = float(self.get_parameter('human_timeout_sec').value)
 
         self.robot_pose = {'x': 0.0, 'y': 0.0, 'theta': 0.0}
@@ -76,9 +79,12 @@ class ContextMonitor(Node):
         }
         self.occlusion_flag = False
 
-        self.context_pub = self.create_publisher(String, '/canmpc/context', 10)
-        self.humans_pub = self.create_publisher(String, '/canmpc/humans', 10)
+        self.context_pub = self.create_publisher(Context, '/canmpc/context', 10)
+        self.humans_pub = self.create_publisher(HumanStates, '/canmpc/humans', 10)
+        self.context_json_pub = self.create_publisher(String, '/canmpc/context_json', 10)
+        self.humans_json_pub = self.create_publisher(String, '/canmpc/humans_json', 10)
         self.bounds_pub = self.create_publisher(Float32MultiArray, '/canmpc/adaptive_bounds', 10)
+        self.typed_bounds_pub = self.create_publisher(AdaptiveBounds, '/canmpc/adaptive_bounds_msg', 10)
         self.legacy_context_pub = self.create_publisher(String, '/context', 10)
 
         sensor_qos = QoSProfile(
@@ -100,7 +106,9 @@ class ContextMonitor(Node):
         self.create_timer(0.1, self.publish_context)
 
         self.get_logger().info('Continuous CCA-NMPC context estimator initialized')
-        self.get_logger().info('Publishing /canmpc/context JSON, /canmpc/humans JSON, /canmpc/adaptive_bounds')
+        self.get_logger().info(
+            'Publishing typed /canmpc/context and /canmpc/humans; '
+            'legacy JSON mirrors on /canmpc/context_json and /canmpc/humans_json')
 
     def odom_callback(self, msg: Odometry):
         q = msg.pose.pose.orientation
@@ -241,16 +249,46 @@ class ContextMonitor(Node):
             'legacy_context': self._legacy_label(phi_h),
         }
 
-        context_msg = String()
-        context_msg.data = json.dumps(context_payload, separators=(',', ':'))
+        context_msg = Context()
+        context_msg.header.stamp = now_msg
+        context_msg.header.frame_id = 'map'
+        context_msg.phi_h = float(phi_h)
+        context_msg.nearest_human_dist = float(d_h)
+        context_msg.d_safe = float(bounds['d_safe'])
+        context_msg.vx_max = float(bounds['vx_max'])
+        context_msg.vy_max = float(bounds['vy_max'])
+        context_msg.omega_max = float(bounds['omega_max'])
+        context_msg.occlusion_flag = bool(self.occlusion_flag)
         self.context_pub.publish(context_msg)
 
-        humans_msg = String()
-        humans_msg.data = json.dumps({
-            'stamp': context_payload['stamp'],
-            'humans': [self.human_state] if self.human_state.get('confidence', 0.0) > 0.0 else [],
-        }, separators=(',', ':'))
-        self.humans_pub.publish(humans_msg)
+        if self.publish_pseudo_humans:
+            humans_msg = HumanStates()
+            humans_msg.header.stamp = now_msg
+            humans_msg.header.frame_id = 'map'
+            if self.human_state.get('confidence', 0.0) > 0.0:
+                human_msg = HumanState()
+                human_msg.id = int(self.human_state['id'])
+                human_msg.pose.position.x = float(self.human_state['x'])
+                human_msg.pose.position.y = float(self.human_state['y'])
+                human_msg.pose.position.z = 0.0
+                human_msg.pose.orientation.w = 1.0
+                human_msg.velocity.linear.x = float(self.human_state['vx'])
+                human_msg.velocity.linear.y = float(self.human_state['vy'])
+                human_msg.confidence = float(self.human_state['confidence'])
+                humans_msg.humans.append(human_msg)
+            self.humans_pub.publish(humans_msg)
+
+        context_json_msg = String()
+        context_json_msg.data = json.dumps(context_payload, separators=(',', ':'))
+        self.context_json_pub.publish(context_json_msg)
+
+        if self.publish_pseudo_humans:
+            humans_json_msg = String()
+            humans_json_msg.data = json.dumps({
+                'stamp': context_payload['stamp'],
+                'humans': [self.human_state] if self.human_state.get('confidence', 0.0) > 0.0 else [],
+            }, separators=(',', ':'))
+            self.humans_json_pub.publish(humans_json_msg)
 
         bounds_msg = Float32MultiArray()
         bounds_msg.data = [
@@ -261,6 +299,15 @@ class ContextMonitor(Node):
             float(bounds['omega_max']),
         ]
         self.bounds_pub.publish(bounds_msg)
+
+        typed_bounds_msg = AdaptiveBounds()
+        typed_bounds_msg.header.stamp = now_msg
+        typed_bounds_msg.header.frame_id = 'map'
+        typed_bounds_msg.vx_max = float(bounds['vx_max'])
+        typed_bounds_msg.vy_max = float(bounds['vy_max'])
+        typed_bounds_msg.omega_max = float(bounds['omega_max'])
+        typed_bounds_msg.d_safe = float(bounds['d_safe'])
+        self.typed_bounds_pub.publish(typed_bounds_msg)
 
         if self.publish_legacy_context:
             legacy_msg = String()

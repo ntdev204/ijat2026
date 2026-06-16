@@ -1,0 +1,9 @@
+<class_libraries>
+  <library path="cca_nmpc_controller">
+    <class name="cca_nmpc_controller/CCANMPCController" type="cca_nmpc_controller::CCANMPCController" base_class_type="nav2_core::Controller">
+      <description>
+        Continuous Context-Adaptive Nonlinear Model Predictive Controller (Mecanum kinematics, dynamic human avoidance).
+      </description>
+    </class>
+  </library>
+</class_libraries>

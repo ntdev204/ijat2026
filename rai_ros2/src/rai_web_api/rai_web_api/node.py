@@ -14,6 +14,7 @@ from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
 from std_msgs.msg import Bool, Float32, Float32MultiArray, String
 from action_msgs.msg import GoalStatus
+from ccanmpc_msgs.msg import Context, HumanStates
 
 try:
     from nav2_msgs.action import NavigateToPose
@@ -163,11 +164,11 @@ class WebBridgeNode(Node):
             )
         if self.context_sub is None:
             self.context_sub = self.create_subscription(
-                String, '/canmpc/context', self.context_callback, self.reliable_qos
+                Context, '/canmpc/context', self.context_callback, self.reliable_qos
             )
         if self.humans_sub is None:
             self.humans_sub = self.create_subscription(
-                String, '/canmpc/humans', self.humans_callback, self.reliable_qos
+                HumanStates, '/canmpc/humans', self.humans_callback, self.reliable_qos
             )
         if self.bounds_sub is None:
             self.bounds_sub = self.create_subscription(
@@ -380,25 +381,38 @@ class WebBridgeNode(Node):
             if 0 <= idx_right < num_rays and msg.range_min < ranges[idx_right] < msg.range_max:
                 self.telemetry["lidar_clearance"]["right"] = round(ranges[idx_right], 2)
 
-    def context_callback(self, msg: String):
+    def context_callback(self, msg: Context):
         with self.lock:
-            try:
-                payload = json.loads(msg.data)
-                if isinstance(payload, dict):
-                    self.telemetry["context"].update(payload)
-                else:
-                    self.telemetry["context"]["legacy_context"] = str(payload)
-            except Exception:
-                self.telemetry["context"]["legacy_context"] = msg.data
+            self.telemetry["context"].update({
+                "phi_h": round(float(msg.phi_h), 4),
+                "d_h": round(float(msg.nearest_human_dist), 3),
+                "d_safe": round(float(msg.d_safe), 3),
+                "vx_max": round(float(msg.vx_max), 3),
+                "vy_max": round(float(msg.vy_max), 3),
+                "omega_max": round(float(msg.omega_max), 3),
+                "occlusion_flag": bool(msg.occlusion_flag),
+                "legacy_context": self._legacy_context_label(float(msg.phi_h)),
+            })
 
-    def humans_callback(self, msg: String):
+    def humans_callback(self, msg: HumanStates):
         with self.lock:
-            try:
-                payload = json.loads(msg.data)
-                humans = payload.get("humans", []) if isinstance(payload, dict) else []
-                self.telemetry["humans"] = humans if isinstance(humans, list) else []
-            except Exception:
-                self.telemetry["humans"] = []
+            self.telemetry["humans"] = [
+                {
+                    "id": int(human.id),
+                    "x": round(float(human.pose.position.x), 3),
+                    "y": round(float(human.pose.position.y), 3),
+                    "vx": round(float(human.velocity.linear.x), 3),
+                    "vy": round(float(human.velocity.linear.y), 3),
+                    "confidence": round(float(human.confidence), 3),
+                }
+                for human in msg.humans
+            ]
+
+    @staticmethod
+    def _legacy_context_label(phi_h: float) -> str:
+        if phi_h > 0.65:
+            return "HPZ"
+        return "OZ"
 
     def bounds_callback(self, msg: Float32MultiArray):
         data = list(msg.data)

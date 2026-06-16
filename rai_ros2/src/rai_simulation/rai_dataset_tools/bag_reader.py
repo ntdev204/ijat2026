@@ -39,10 +39,84 @@ def parse_twist_stamped(blob):
     stamp = sec + nanosec * 1e-9
     return stamp, vx, vy, wz
 
-# Parse std_msgs/msg/String (context and humans are published as JSON strings)
+# Parse std_msgs/msg/String legacy JSON mirrors
 def parse_string(blob):
     data, _ = read_string(blob, 4)
     return data
+
+def align(offset, boundary):
+    return (offset + boundary - 1) & ~(boundary - 1)
+
+def parse_header(blob):
+    if len(blob) < 12:
+        return 0.0, "", 4
+    sec, nanosec = struct.unpack('<iI', blob[4:12])
+    frame_id, offset = read_string(blob, 12)
+    return sec + nanosec * 1e-9, frame_id, offset
+
+# Parse ccanmpc_msgs/msg/Context
+def parse_context(blob):
+    stamp, frame_id, offset = parse_header(blob)
+    offset = align(offset, 8)
+    if offset + 48 > len(blob):
+        return stamp, 0.0, 10.0, 0.5, 0.0, 0.0, 0.0, False
+    phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max = struct.unpack(
+        '<dddddd', blob[offset:offset + 48]
+    )
+    offset += 48
+    occlusion_flag = bool(blob[offset]) if offset < len(blob) else False
+    return stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag
+
+# Parse ccanmpc_msgs/msg/HumanStates
+def parse_human_states(blob):
+    stamp, frame_id, offset = parse_header(blob)
+    offset = align(offset, 4)
+    if offset + 4 > len(blob):
+        return stamp, []
+
+    human_count = struct.unpack('<I', blob[offset:offset + 4])[0]
+    offset += 4
+    humans = []
+
+    for _ in range(human_count):
+        offset = align(offset, 4)
+        if offset + 4 > len(blob):
+            break
+        human_id = struct.unpack('<i', blob[offset:offset + 4])[0]
+        offset += 4
+
+        offset = align(offset, 8)
+        if offset + 56 > len(blob):
+            break
+        px, py, pz, qx, qy, qz, qw = struct.unpack('<ddddddd', blob[offset:offset + 56])
+        offset += 56
+
+        offset = align(offset, 8)
+        if offset + 48 > len(blob):
+            break
+        vx, vy, vz, wx, wy, wz = struct.unpack('<dddddd', blob[offset:offset + 48])
+        offset += 48
+
+        offset = align(offset, 8)
+        if offset + 8 > len(blob):
+            break
+        confidence = struct.unpack('<d', blob[offset:offset + 8])[0]
+        offset += 8
+
+        humans.append({
+            "id": human_id,
+            "pose": {
+                "position": {"x": px, "y": py, "z": pz},
+                "orientation": {"x": qx, "y": qy, "z": qz, "w": qw},
+            },
+            "velocity": {
+                "linear": {"x": vx, "y": vy, "z": vz},
+                "angular": {"x": wx, "y": wy, "z": wz},
+            },
+            "confidence": confidence,
+        })
+
+    return stamp, humans
 
 # Parse std_msgs/msg/Float32MultiArray
 def parse_float_array(blob):
@@ -94,7 +168,7 @@ def parse_odom(blob):
     
     return stamp, x, y, theta, vx, vy, wz
 
-# Parse canmpc_msgs/msg/SolverStats
+# Parse ccanmpc_msgs/msg/SolverStats
 def parse_solver_stats(blob):
     if len(blob) < 30:
         return 0, 0.0, 0, "unknown", False, False
@@ -268,7 +342,26 @@ class Ros2Db3Reader:
                         "timestamp": stamp_sec,
                         "data": floats
                     })
-                elif topic_type == "canmpc_msgs/msg/SolverStats":
+                elif topic_type == "ccanmpc_msgs/msg/Context":
+                    m_stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag = parse_context(data)
+                    parsed_messages.append({
+                        "timestamp": m_stamp if m_stamp > 0 else stamp_sec,
+                        "phi_h": phi_h,
+                        "nearest_human_dist": nearest_human_dist,
+                        "d_h": nearest_human_dist,
+                        "d_safe": d_safe,
+                        "vx_max": vx_max,
+                        "vy_max": vy_max,
+                        "omega_max": omega_max,
+                        "occlusion_flag": occlusion_flag,
+                    })
+                elif topic_type == "ccanmpc_msgs/msg/HumanStates":
+                    m_stamp, humans = parse_human_states(data)
+                    parsed_messages.append({
+                        "timestamp": m_stamp if m_stamp > 0 else stamp_sec,
+                        "humans": humans,
+                    })
+                elif topic_type == "ccanmpc_msgs/msg/SolverStats":
                     m_stamp, solve_time_ms, iter_count, status, t_flag, c_flag = parse_solver_stats(data)
                     parsed_messages.append({
                         "timestamp": m_stamp if m_stamp > 0 else stamp_sec,

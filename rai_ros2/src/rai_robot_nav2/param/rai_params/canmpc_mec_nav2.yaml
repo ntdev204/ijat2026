@@ -94,7 +94,7 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     FollowPath:
-      plugin: "ca_nmpc_controller/CANMPCController"
+      plugin: "cca_nmpc_controller/CCANMPCController"
       use_native_solver: True
       horizon_steps: 20
       model_dt: 0.05
@@ -168,7 +168,7 @@ local_costmap:
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
       human_semantic_layer:
-        plugin: "canmpc_costmap_layers::HumanSemanticLayer"
+        plugin: "ccanmpc_costmap_layers::HumanSemanticLayer"
         lethal_radius: 0.4
         warning_radius: 1.2
         warning_cost: 180
