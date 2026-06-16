@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
 import { drawOccupancyMap } from "@/lib/map-canvas";
+import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
 import type { MapPayload } from "@/types/robot-runtime";
 
 export interface MapNavigationRuntime {
@@ -32,6 +33,7 @@ export function useMapNavigation(): MapNavigationRuntime {
   const [busy, setBusy] = useState(false);
   const [slamRunning, setSlamRunning] = useState(false);
   const [status, setStatus] = useState("Waiting for map data.");
+  const [telemetry, setTelemetry] = useState<RobotUiTelemetry | null>(null);
 
   useWebSocket("/ws/map", {
     onMessage: (event) => {
@@ -40,6 +42,16 @@ export function useMapNavigation(): MapNavigationRuntime {
         setStatus("Live SLAM map updated.");
       } catch {
         setStatus("Invalid live map payload.");
+      }
+    },
+  });
+
+  useWebSocket("/ws/telemetry", {
+    onMessage: (event) => {
+      try {
+        setTelemetry(normalizeRobotTelemetry(JSON.parse(String(event.data))).robot);
+      } catch {
+        setTelemetry(null);
       }
     },
   });
@@ -67,8 +79,8 @@ export function useMapNavigation(): MapNavigationRuntime {
 
   useEffect(() => {
     if (!canvasRef.current || !currentMap) return;
-    drawOccupancyMap(canvasRef.current, currentMap, { showRobot: false });
-  }, [currentMap]);
+    drawOccupancyMap(canvasRef.current, currentMap, { telemetry });
+  }, [currentMap, telemetry]);
 
   const startSlam = useCallback(async () => {
     setBusy(true);

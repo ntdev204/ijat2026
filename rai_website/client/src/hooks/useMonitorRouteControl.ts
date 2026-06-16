@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type MouseEvent, type RefObject } fro
 import { ApiError, fetchWithAuth } from "@/lib/api";
 import { drawOccupancyMap, pixelToWorld, type PoseMarker } from "@/lib/map-canvas";
 import type { RobotUiTelemetry } from "@/lib/robot-telemetry";
-import type { MapPayload, Nav2Config, Pose2D, RobotAnchors } from "@/types/robot-runtime";
+import type { MapPayload, Nav2Config, PathsPayload, Pose2D, RobotAnchors } from "@/types/robot-runtime";
 
 type PoseSelectionMode = "route_start" | "route_goal" | "initial_pose" | "home_pose" | null;
 
@@ -37,6 +37,7 @@ export function useMonitorRouteControl(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   mapData: MapPayload | null,
   telemetry: RobotUiTelemetry | null,
+  paths: PathsPayload,
   nav2Config: Nav2Config,
 ) : MonitorRouteControlRuntime {
   const [busy, setBusy] = useState(false);
@@ -67,10 +68,11 @@ export function useMonitorRouteControl(
   useEffect(() => {
     if (!canvasRef.current || !mapData) return;
     drawOccupancyMap(canvasRef.current, mapData, {
+      paths,
       telemetry,
       markers: buildMarkers(routeStartPose, routeGoalPose, anchors),
     });
-  }, [anchors, canvasRef, mapData, routeGoalPose, routeStartPose, telemetry]);
+  }, [anchors, canvasRef, mapData, paths, routeGoalPose, routeStartPose, telemetry]);
 
   function openRouteSelection() {
     setSelectionMode("route_start");

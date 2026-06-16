@@ -46,6 +46,14 @@ export function occupancyColor(value: number) {
   return Math.max(40, 245 - Math.round(value * 2));
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function scaledOverlaySize(map: MapPayload, ratio: number, min: number, max: number) {
+  return clamp(Math.min(map.width, map.height) * ratio, min, max);
+}
+
 export function drawOccupancyMap(canvas: HTMLCanvasElement, map: MapPayload, overlay: MapCanvasOverlay = {}) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -86,7 +94,7 @@ function drawPath(
   if (!points || points.length < 2) return;
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = width;
+  ctx.lineWidth = Math.min(width, scaledOverlaySize(map, 0.012, 1, width));
   ctx.beginPath();
   points.forEach((point, index) => {
     const pixel = worldToPixel(point, map);
@@ -98,13 +106,14 @@ function drawPath(
 }
 
 function drawHumans(ctx: CanvasRenderingContext2D, map: MapPayload, telemetry?: RobotUiTelemetry | null, showLabels = false) {
+  const radius = scaledOverlaySize(map, 0.025, 2.5, 7);
   for (const human of telemetry?.humans ?? []) {
     if (typeof human.x !== "number" || typeof human.y !== "number") continue;
     const pixel = worldToPixel({ x: human.x, y: human.y }, map);
     ctx.save();
     ctx.fillStyle = "rgba(220, 38, 38, 0.85)";
     ctx.beginPath();
-    ctx.arc(pixel.x, pixel.y, 7, 0, Math.PI * 2);
+    ctx.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
     ctx.fill();
     if (showLabels) {
       ctx.fillStyle = "#ffffff";
@@ -117,15 +126,16 @@ function drawHumans(ctx: CanvasRenderingContext2D, map: MapPayload, telemetry?: 
 
 function drawGoal(ctx: CanvasRenderingContext2D, map: MapPayload, goal: Point2D) {
   const pixel = worldToPixel(goal, map);
+  const radius = scaledOverlaySize(map, 0.035, 4, 8);
   ctx.save();
   ctx.strokeStyle = "#dc2626";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = scaledOverlaySize(map, 0.01, 1, 3);
   ctx.beginPath();
-  ctx.arc(pixel.x, pixel.y, 8, 0, Math.PI * 2);
-  ctx.moveTo(pixel.x - 12, pixel.y);
-  ctx.lineTo(pixel.x + 12, pixel.y);
-  ctx.moveTo(pixel.x, pixel.y - 12);
-  ctx.lineTo(pixel.x, pixel.y + 12);
+  ctx.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
+  ctx.moveTo(pixel.x - radius * 1.5, pixel.y);
+  ctx.lineTo(pixel.x + radius * 1.5, pixel.y);
+  ctx.moveTo(pixel.x, pixel.y - radius * 1.5);
+  ctx.lineTo(pixel.x, pixel.y + radius * 1.5);
   ctx.stroke();
   ctx.restore();
 }
@@ -135,16 +145,19 @@ function drawRobot(ctx: CanvasRenderingContext2D, map: MapPayload, telemetry?: R
   if (pose?.x == null || pose.y == null) return;
 
   const robot = worldToPixel({ x: pose.x, y: pose.y }, map);
+  const body = scaledOverlaySize(map, 0.035, 3, 7);
+  const nose = body * 1.7;
+  const tail = body * 1.1;
   ctx.save();
   ctx.translate(robot.x, robot.y);
   ctx.rotate(-(pose.yaw ?? 0));
   ctx.fillStyle = "#16a34a";
   ctx.strokeStyle = "#052e16";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = scaledOverlaySize(map, 0.008, 1, 2);
   ctx.beginPath();
-  ctx.moveTo(14, 0);
-  ctx.lineTo(-10, 8);
-  ctx.lineTo(-10, -8);
+  ctx.moveTo(nose, 0);
+  ctx.lineTo(-tail, body);
+  ctx.lineTo(-tail, -body);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
@@ -152,6 +165,8 @@ function drawRobot(ctx: CanvasRenderingContext2D, map: MapPayload, telemetry?: R
 }
 
 function drawMarkers(ctx: CanvasRenderingContext2D, map: MapPayload, markers: PoseMarker[]) {
+  const radius = scaledOverlaySize(map, 0.04, 4, 10);
+  const arrow = scaledOverlaySize(map, 0.045, 5, 11);
   for (const marker of markers) {
     const pixel = worldToPixel(marker.pose, map);
     ctx.save();
@@ -159,15 +174,15 @@ function drawMarkers(ctx: CanvasRenderingContext2D, map: MapPayload, markers: Po
     ctx.rotate(-(marker.pose.yaw ?? 0));
     ctx.strokeStyle = marker.color;
     ctx.fillStyle = "#ffffff";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = scaledOverlaySize(map, 0.008, 1, 2);
     ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(14, 0);
-    ctx.lineTo(-6, 6);
-    ctx.lineTo(-6, -6);
+    ctx.moveTo(arrow, 0);
+    ctx.lineTo(-arrow * 0.5, arrow * 0.45);
+    ctx.lineTo(-arrow * 0.5, -arrow * 0.45);
     ctx.closePath();
     ctx.fillStyle = marker.color;
     ctx.fill();

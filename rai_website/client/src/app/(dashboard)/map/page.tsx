@@ -52,7 +52,7 @@ export default function MapPage() {
             {currentMap ? (
               <canvas
                 ref={canvasRef}
-                className="max-h-[calc(100vh-280px)] max-w-full rounded-md border border-slate-300 bg-white shadow-sm"
+                className="h-[min(54vh,560px)] w-auto max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated]"
               />
             ) : (
               <div className="text-center text-sm text-slate-500">

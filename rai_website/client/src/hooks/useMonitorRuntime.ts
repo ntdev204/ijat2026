@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
-import { drawOccupancyMap } from "@/lib/map-canvas";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
 import type { MapPayload, PathsPayload, StreamState } from "@/types/robot-runtime";
 
@@ -110,15 +109,6 @@ export function useMonitorRuntime(): MonitorRuntime {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [startStream]);
-
-  useEffect(() => {
-    if (!mapCanvasRef.current || !mapData) return;
-    drawOccupancyMap(mapCanvasRef.current, mapData, {
-      paths,
-      telemetry,
-      showRobot: false,
-    });
-  }, [mapData, paths, telemetry]);
 
   return {
     videoRef,

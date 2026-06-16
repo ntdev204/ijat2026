@@ -15,7 +15,7 @@ import type { MouseEvent, RefObject } from "react";
 export default function MonitorPage() {
   const nav2 = useNav2Control();
   const monitor = useMonitorRuntime();
-  const route = useMonitorRouteControl(monitor.mapCanvasRef, monitor.mapData, monitor.telemetry, nav2.nav2Config);
+  const route = useMonitorRouteControl(monitor.mapCanvasRef, monitor.mapData, monitor.telemetry, monitor.paths, nav2.nav2Config);
   const { live, mapCanvasRef, mapData, message, paths, state, telemetry, videoRef } = monitor;
 
   return (
@@ -144,7 +144,7 @@ function RealtimeMapPanel({ mapCanvasRef, mapData, nav2Running, paths, selection
           <canvas
             ref={mapCanvasRef}
             onClick={onMapClick}
-            className={`max-h-[420px] max-w-full rounded-md border border-slate-300 bg-white shadow-sm ${selectionMode ? "cursor-crosshair" : "cursor-default"}`}
+            className={`h-[min(48vh,500px)] w-auto max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated] ${selectionMode ? "cursor-crosshair" : "cursor-default"}`}
           />
         ) : (
           <div className="text-sm text-slate-400">Waiting for /api/ws/map.</div>
