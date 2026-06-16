@@ -536,7 +536,7 @@ class WebBridgeNode(Node):
             self.get_logger().error("Nav2 action client is not initialized!")
             return False
 
-        if not self.nav_to_pose_client.wait_for_action_server(timeout_sec=2.0):
+        if not self._wait_for_nav_server(timeout_sec=2.0):
             self.get_logger().error("Nav2 action server not available!")
             return False
 
@@ -554,6 +554,28 @@ class WebBridgeNode(Node):
         send_future = self.nav_to_pose_client.send_goal_async(goal_msg)
         send_future.add_done_callback(self._handle_nav_goal_response)
         return True
+
+    def _wait_for_nav_server(self, timeout_sec: float = 2.0):
+        """Tương thích nhiều bản rclpy ActionClient."""
+        if self.nav_to_pose_client is None:
+            return False
+
+        wait_for_server = getattr(self.nav_to_pose_client, "wait_for_server", None)
+        if callable(wait_for_server):
+            return bool(wait_for_server(timeout_sec=timeout_sec))
+
+        wait_for_action_server = getattr(self.nav_to_pose_client, "wait_for_action_server", None)
+        if callable(wait_for_action_server):
+            return bool(wait_for_action_server(timeout_sec=timeout_sec))
+
+        server_is_ready = getattr(self.nav_to_pose_client, "server_is_ready", None)
+        if callable(server_is_ready):
+            deadline = time.time() + timeout_sec
+            while time.time() < deadline:
+                if bool(server_is_ready()):
+                    return True
+                time.sleep(0.1)
+        return False
 
     def cancel_nav_goal(self):
         """Hủy hành trình di chuyển Nav2 đang chạy."""
