@@ -12,6 +12,28 @@
 
 namespace rai_canmpc_controller
 {
+namespace
+{
+double finite_or(double value, double fallback)
+{
+  return std::isfinite(value) ? value : fallback;
+}
+
+bool pose_is_finite(const geometry_msgs::msg::PoseStamped & pose)
+{
+  return std::isfinite(pose.pose.position.x) &&
+         std::isfinite(pose.pose.position.y) &&
+         std::isfinite(pose.pose.orientation.x) &&
+         std::isfinite(pose.pose.orientation.y) &&
+         std::isfinite(pose.pose.orientation.z) &&
+         std::isfinite(pose.pose.orientation.w);
+}
+
+bool vector_is_finite(const std::vector<double> & values)
+{
+  return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
+}
+}  // namespace
 
 void CANMPCController::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
@@ -239,295 +261,327 @@ geometry_msgs::msg::TwistStamped CANMPCController::computeVelocityCommands(
   const geometry_msgs::msg::Twist & velocity,
   nav2_core::GoalChecker * goal_checker)
 {
-  (void)velocity;
-  (void)goal_checker;
-
-  auto start_time = std::chrono::high_resolution_clock::now();
-
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header.frame_id = pose.header.frame_id;
   cmd_vel.header.stamp = pose.header.stamp;
+  try {
+    (void)velocity;
+    (void)goal_checker;
 
-  // 1. Thread-safe copy of latest dynamic callback data
-  canmpc_msgs::msg::Context context_copy;
-  canmpc_msgs::msg::HumanStates humans_copy;
-  {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    context_copy = latest_context_;
-    humans_copy = latest_human_states_;
-  }
+    auto start_time = std::chrono::high_resolution_clock::now();
 
-  // 2. Transform and crop global plan
-  auto costmap = costmap_ros_->getCostmap();
-  std::string global_frame = costmap_ros_->getGlobalFrameID();
-
-  nav_msgs::msg::Path local_cropped_path = plan_handler_.transformAndCropPlan(
-    pose, tf_, global_frame, *costmap, max_path_length_);
-
-  if (local_cropped_path.poses.empty()) {
-    RCLCPP_WARN(logger_, "Local cropped path is empty!");
-    return cmd_vel; // Zero velocity command
-  }
-
-  // Determine current speed limits
-  double max_vx, max_vy, max_omega;
-  getSpeedLimits(context_copy.vx_max, context_copy.vy_max, context_copy.omega_max, max_vx, max_vy, max_omega);
-
-  // 3. Resample path to get exact reference trajectory for the prediction horizon
-  double v_ref = (context_copy.vx_max > 0.0) ? context_copy.vx_max : default_v_ref_;
-  std::vector<geometry_msgs::msg::PoseStamped> ref_traj = plan_handler_.resamplePath(
-    local_cropped_path, pose, horizon_steps_, model_dt_, v_ref);
-
-  // Publish reference path for visualization
-  nav_msgs::msg::Path ref_path_msg;
-  ref_path_msg.header.frame_id = global_frame;
-  ref_path_msg.header.stamp = pose.header.stamp;
-  ref_path_msg.poses = ref_traj;
-  local_reference_path_pub_->publish(ref_path_msg);
-
-  // Extract current robot state
-  double rx = pose.pose.position.x;
-  double ry = pose.pose.position.y;
-  double r_yaw = tf2::getYaw(pose.pose.orientation);
-
-  // 4. Populate solver input parameters
-  SolveInput solver_input;
-  solver_input.x_init = {rx, ry, r_yaw};
-
-  // Populate reference states and unwrap heading angles to avoid wrapping discontinuities
-  solver_input.x_ref.resize(3 * (horizon_steps_ + 1));
-  double prev_yaw = r_yaw;
-  for (int i = 0; i <= horizon_steps_; ++i) {
-    double target_yaw = tf2::getYaw(ref_traj[i].pose.orientation);
-    double diff = MecanumModel::normalizeAngle(target_yaw - prev_yaw);
-    target_yaw = prev_yaw + diff;
-    solver_input.x_ref[3 * i] = ref_traj[i].pose.position.x;
-    solver_input.x_ref[3 * i + 1] = ref_traj[i].pose.position.y;
-    solver_input.x_ref[3 * i + 2] = target_yaw;
-    prev_yaw = target_yaw;
-  }
-
-  // Populate reference controls (defaulting to tracking the reference forward speed)
-  solver_input.u_ref.assign(3 * horizon_steps_, 0.0);
-  for (int i = 0; i < horizon_steps_; ++i) {
-    solver_input.u_ref[3 * i] = v_ref;
-  }
-
-  // Find 3 closest humans and populate human data parameter vector
-  solver_input.human_data.assign(4 * 3, 0.0); // Size 12 for 3 humans
-  
-  struct HumanDist {
-    canmpc_msgs::msg::HumanState state;
-    double dist;
-  };
-  std::vector<HumanDist> sorted_humans;
-  for (const auto & human : humans_copy.humans) {
-    double dx = human.pose.position.x - rx;
-    double dy = human.pose.position.y - ry;
-    double dist = std::sqrt(dx * dx + dy * dy);
-    sorted_humans.push_back({human, dist});
-  }
-
-  std::sort(sorted_humans.begin(), sorted_humans.end(), [](const HumanDist & a, const HumanDist & b) {
-    return a.dist < b.dist;
-  });
-
-  for (size_t j = 0; j < 3; ++j) {
-    if (j < sorted_humans.size()) {
-      solver_input.human_data[4 * j] = sorted_humans[j].state.pose.position.x;
-      solver_input.human_data[4 * j + 1] = sorted_humans[j].state.pose.position.y;
-      solver_input.human_data[4 * j + 2] = sorted_humans[j].state.velocity.linear.x;
-      solver_input.human_data[4 * j + 3] = sorted_humans[j].state.velocity.linear.y;
-    } else {
-      // Place dummy human far away if fewer than 3 active humans
-      solver_input.human_data[4 * j] = 999.0;
-      solver_input.human_data[4 * j + 1] = 999.0;
-      solver_input.human_data[4 * j + 2] = 0.0;
-      solver_input.human_data[4 * j + 3] = 0.0;
+    if (!pose_is_finite(pose)) {
+      RCLCPP_ERROR(logger_, "Robot pose contains NaN/Inf. Returning zero velocity.");
+      return cmd_vel;
     }
-  }
 
-  // Populate scalar solver hyperparameters
-  solver_input.params = {
-    model_dt_,
-    beta_,
-    d0_,
-    d_safe_0_,
-    d_safe_max_,
-    v_ref,
-    max_vx,
-    v_max_min_,
-    max_vy,
-    v_y_max_min_,
-    max_omega,
-    omega_max_min_,
-    q_x_,
-    q_y_,
-    q_theta_,
-    r_vx_,
-    r_vy_,
-    r_omega_,
-    rd_vx_,
-    rd_vy_,
-    rd_omega_,
-    q_active_factor_,
-    w_slack_
-  };
+    // 1. Thread-safe copy of latest dynamic callback data
+    canmpc_msgs::msg::Context context_copy;
+    canmpc_msgs::msg::HumanStates humans_copy;
+    {
+      std::lock_guard<std::mutex> lock(data_mutex_);
+      context_copy = latest_context_;
+      humans_copy = latest_human_states_;
+    }
 
-  // 5. Invoke MPC Solver
-  SolveOutput solver_output = solver_wrapper_->solve(solver_input);
+    // 2. Transform and crop global plan
+    auto costmap = costmap_ros_->getCostmap();
+    std::string global_frame = costmap_ros_->getGlobalFrameID();
 
-  auto end_solve_time = std::chrono::high_resolution_clock::now();
-  double solve_time_ms = std::chrono::duration<double, std::milli>(end_solve_time - start_time).count();
-  bool timeout_detected = (solve_time_ms > max_solver_time_ms_);
+    nav_msgs::msg::Path local_cropped_path = plan_handler_.transformAndCropPlan(
+      pose, tf_, global_frame, *costmap, max_path_length_);
 
-  // 6. Evaluate solution validity and collision safety
-  bool collision_detected = false;
-  bool nan_detected = false;
-  bool size_invalid = solver_output.u_opt.size() < 3;
+    if (local_cropped_path.poses.empty()) {
+      RCLCPP_WARN(logger_, "Local cropped path is empty!");
+      return cmd_vel; // Zero velocity command
+    }
 
-  if (solver_output.success && !size_invalid) {
-    // Check for NaNs or Inf
-    for (double val : solver_output.u_opt) {
-      if (std::isnan(val) || std::isinf(val)) {
-        nan_detected = true;
-        break;
+    // Determine current speed limits
+    double max_vx, max_vy, max_omega;
+    getSpeedLimits(context_copy.vx_max, context_copy.vy_max, context_copy.omega_max, max_vx, max_vy, max_omega);
+    max_vx = finite_or(max_vx, default_v_ref_);
+    max_vy = finite_or(max_vy, default_v_ref_);
+    max_omega = finite_or(max_omega, 1.0);
+
+    // 3. Resample path to get exact reference trajectory for the prediction horizon
+    double v_ref = (context_copy.vx_max > 0.0 && std::isfinite(context_copy.vx_max)) ? context_copy.vx_max : default_v_ref_;
+    std::vector<geometry_msgs::msg::PoseStamped> ref_traj = plan_handler_.resamplePath(
+      local_cropped_path, pose, horizon_steps_, model_dt_, v_ref);
+
+    if (ref_traj.size() < static_cast<size_t>(horizon_steps_ + 1)) {
+      RCLCPP_ERROR(logger_, "Reference trajectory is shorter than horizon. Returning zero velocity.");
+      return cmd_vel;
+    }
+    if (!std::all_of(ref_traj.begin(), ref_traj.end(), pose_is_finite)) {
+      RCLCPP_ERROR(logger_, "Reference trajectory contains NaN/Inf. Returning zero velocity.");
+      return cmd_vel;
+    }
+
+    // Publish reference path for visualization
+    nav_msgs::msg::Path ref_path_msg;
+    ref_path_msg.header.frame_id = global_frame;
+    ref_path_msg.header.stamp = pose.header.stamp;
+    ref_path_msg.poses = ref_traj;
+    local_reference_path_pub_->publish(ref_path_msg);
+
+    // Extract current robot state
+    double rx = pose.pose.position.x;
+    double ry = pose.pose.position.y;
+    double r_yaw = finite_or(tf2::getYaw(pose.pose.orientation), 0.0);
+
+    // 4. Populate solver input parameters
+    SolveInput solver_input;
+    solver_input.x_init = {rx, ry, r_yaw};
+
+    // Populate reference states and unwrap heading angles to avoid wrapping discontinuities
+    solver_input.x_ref.resize(3 * (horizon_steps_ + 1));
+    double prev_yaw = r_yaw;
+    for (int i = 0; i <= horizon_steps_; ++i) {
+      double target_yaw = finite_or(tf2::getYaw(ref_traj[i].pose.orientation), prev_yaw);
+      double diff = MecanumModel::normalizeAngle(target_yaw - prev_yaw);
+      target_yaw = prev_yaw + diff;
+      solver_input.x_ref[3 * i] = finite_or(ref_traj[i].pose.position.x, rx);
+      solver_input.x_ref[3 * i + 1] = finite_or(ref_traj[i].pose.position.y, ry);
+      solver_input.x_ref[3 * i + 2] = target_yaw;
+      prev_yaw = target_yaw;
+    }
+
+    // Populate reference controls (defaulting to tracking the reference forward speed)
+    solver_input.u_ref.assign(3 * horizon_steps_, 0.0);
+    for (int i = 0; i < horizon_steps_; ++i) {
+      solver_input.u_ref[3 * i] = v_ref;
+    }
+
+    // Find 3 closest humans and populate human data parameter vector
+    solver_input.human_data.assign(4 * 3, 0.0); // Size 12 for 3 humans
+
+    struct HumanDist {
+      canmpc_msgs::msg::HumanState state;
+      double dist;
+    };
+    std::vector<HumanDist> sorted_humans;
+    for (const auto & human : humans_copy.humans) {
+      const double hx = human.pose.position.x;
+      const double hy = human.pose.position.y;
+      const double hvx = human.velocity.linear.x;
+      const double hvy = human.velocity.linear.y;
+      if (!std::isfinite(hx) || !std::isfinite(hy) || !std::isfinite(hvx) || !std::isfinite(hvy)) {
+        continue;
+      }
+      double dx = hx - rx;
+      double dy = hy - ry;
+      double dist = std::sqrt(dx * dx + dy * dy);
+      sorted_humans.push_back({human, dist});
+    }
+
+    std::sort(sorted_humans.begin(), sorted_humans.end(), [](const HumanDist & a, const HumanDist & b) {
+      return a.dist < b.dist;
+    });
+
+    for (size_t j = 0; j < 3; ++j) {
+      if (j < sorted_humans.size()) {
+        solver_input.human_data[4 * j] = sorted_humans[j].state.pose.position.x;
+        solver_input.human_data[4 * j + 1] = sorted_humans[j].state.pose.position.y;
+        solver_input.human_data[4 * j + 2] = sorted_humans[j].state.velocity.linear.x;
+        solver_input.human_data[4 * j + 3] = sorted_humans[j].state.velocity.linear.y;
+      } else {
+        solver_input.human_data[4 * j] = 999.0;
+        solver_input.human_data[4 * j + 1] = 999.0;
+        solver_input.human_data[4 * j + 2] = 0.0;
+        solver_input.human_data[4 * j + 3] = 0.0;
       }
     }
 
-    // Evaluate trajectory collision footprint cost along predictions
-    auto footprint = costmap_ros_->getRobotFootprint();
-    if (collision_checker_) {
-      for (int i = 0; i <= horizon_steps_; ++i) {
-        double px = solver_output.x_opt[3 * i];
-        double py = solver_output.x_opt[3 * i + 1];
-        double pyaw = solver_output.x_opt[3 * i + 2];
-        double cost = collision_checker_->footprintCostAtPose(px, py, pyaw, footprint);
-        if (cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-          collision_detected = true;
-          RCLCPP_WARN(logger_, "Predicted state %d is in LETHAL collision! Cost: %.1f", i, cost);
+    // Populate scalar solver hyperparameters
+    solver_input.params = {
+      model_dt_,
+      beta_,
+      d0_,
+      d_safe_0_,
+      d_safe_max_,
+      v_ref,
+      max_vx,
+      v_max_min_,
+      max_vy,
+      v_y_max_min_,
+      max_omega,
+      omega_max_min_,
+      q_x_,
+      q_y_,
+      q_theta_,
+      r_vx_,
+      r_vy_,
+      r_omega_,
+      rd_vx_,
+      rd_vy_,
+      rd_omega_,
+      q_active_factor_,
+      w_slack_
+    };
+
+    if (!vector_is_finite(solver_input.x_init) ||
+        !vector_is_finite(solver_input.x_ref) ||
+        !vector_is_finite(solver_input.u_ref) ||
+        !vector_is_finite(solver_input.human_data) ||
+        !vector_is_finite(solver_input.params)) {
+      RCLCPP_ERROR(logger_, "Solver input contains NaN/Inf. Returning zero velocity.");
+      return cmd_vel;
+    }
+
+    // 5. Invoke MPC Solver
+    SolveOutput solver_output = solver_wrapper_->solve(solver_input);
+
+    auto end_solve_time = std::chrono::high_resolution_clock::now();
+    double solve_time_ms = std::chrono::duration<double, std::milli>(end_solve_time - start_time).count();
+    bool timeout_detected = (solve_time_ms > max_solver_time_ms_);
+
+    // 6. Evaluate solution validity and collision safety
+    bool collision_detected = false;
+    bool nan_detected = false;
+    bool size_invalid = solver_output.u_opt.size() < 3 || solver_output.x_opt.size() < static_cast<size_t>(3 * (horizon_steps_ + 1));
+
+    if (solver_output.success && !size_invalid) {
+      for (double val : solver_output.u_opt) {
+        if (std::isnan(val) || std::isinf(val)) {
+          nan_detected = true;
           break;
         }
       }
-    }
-  }
-
-  // 7. Fallback logic
-  double cmd_vx = 0.0;
-  double cmd_vy = 0.0;
-  double cmd_omega = 0.0;
-
-  bool fallback_triggered = !solver_output.success || size_invalid || nan_detected || collision_detected || timeout_detected;
-
-  if (fallback_triggered) {
-    RCLCPP_WARN(logger_, "MPC Solver failure or safety violation detected! Status: %s, SizeInvalid: %d, NaN: %d, Collision: %d, Timeout: %d. Activating safety fallback.",
-                 solver_output.status.c_str(), size_invalid, nan_detected, collision_detected, timeout_detected);
-
-    // Reset wrapper cache since cached trajectory is invalid
-    solver_wrapper_->resetCache();
-
-    // Attempt to execute a decayed version of the previous command
-    double decay_factor = 0.8;
-    double candidate_vx = last_cmd_vel_.linear.x * decay_factor;
-    double candidate_vy = last_cmd_vel_.linear.y * decay_factor;
-    double candidate_omega = last_cmd_vel_.angular.z * decay_factor;
-
-    // Check if the candidate command is safe
-    bool candidate_safe = true;
-    if (collision_checker_) {
-      double dx = (candidate_vx * std::cos(r_yaw) - candidate_vy * std::sin(r_yaw)) * model_dt_;
-      double dy = (candidate_vx * std::sin(r_yaw) + candidate_vy * std::cos(r_yaw)) * model_dt_;
-      double dyaw = candidate_omega * model_dt_;
-
-      double next_x = rx + dx;
-      double next_y = ry + dy;
-      double next_yaw = MecanumModel::normalizeAngle(r_yaw + dyaw);
+      for (double val : solver_output.x_opt) {
+        if (std::isnan(val) || std::isinf(val)) {
+          nan_detected = true;
+          break;
+        }
+      }
 
       auto footprint = costmap_ros_->getRobotFootprint();
-      double cost = collision_checker_->footprintCostAtPose(next_x, next_y, next_yaw, footprint);
-      if (cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-        candidate_safe = false;
-        RCLCPP_WARN(logger_, "Decayed previous command candidate is unsafe! Footprint cost: %.1f", cost);
+      if (collision_checker_ && !nan_detected) {
+        for (int i = 0; i <= horizon_steps_; ++i) {
+          double px = solver_output.x_opt[3 * i];
+          double py = solver_output.x_opt[3 * i + 1];
+          double pyaw = solver_output.x_opt[3 * i + 2];
+          double cost = collision_checker_->footprintCostAtPose(px, py, pyaw, footprint);
+          if (cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+            collision_detected = true;
+            RCLCPP_WARN(logger_, "Predicted state %d is in LETHAL collision! Cost: %.1f", i, cost);
+            break;
+          }
+        }
       }
     }
 
-    if (candidate_safe && (std::abs(candidate_vx) > 0.01 || std::abs(candidate_vy) > 0.01 || std::abs(candidate_omega) > 0.01)) {
-      RCLCPP_INFO(logger_, "Executing safe decayed previous command: vx=%.3f, vy=%.3f, omega=%.3f", candidate_vx, candidate_vy, candidate_omega);
-      cmd_vx = candidate_vx;
-      cmd_vy = candidate_vy;
-      cmd_omega = candidate_omega;
+    double cmd_vx = 0.0;
+    double cmd_vy = 0.0;
+    double cmd_omega = 0.0;
+
+    bool fallback_triggered = !solver_output.success || size_invalid || nan_detected || collision_detected || timeout_detected;
+
+    if (fallback_triggered) {
+      RCLCPP_WARN(logger_, "MPC Solver failure or safety violation detected! Status: %s, SizeInvalid: %d, NaN: %d, Collision: %d, Timeout: %d. Activating safety fallback.",
+                   solver_output.status.c_str(), size_invalid, nan_detected, collision_detected, timeout_detected);
+
+      solver_wrapper_->resetCache();
+
+      double decay_factor = 0.8;
+      double candidate_vx = last_cmd_vel_.linear.x * decay_factor;
+      double candidate_vy = last_cmd_vel_.linear.y * decay_factor;
+      double candidate_omega = last_cmd_vel_.angular.z * decay_factor;
+
+      bool candidate_safe = true;
+      if (collision_checker_) {
+        double dx = (candidate_vx * std::cos(r_yaw) - candidate_vy * std::sin(r_yaw)) * model_dt_;
+        double dy = (candidate_vx * std::sin(r_yaw) + candidate_vy * std::cos(r_yaw)) * model_dt_;
+        double dyaw = candidate_omega * model_dt_;
+
+        double next_x = rx + dx;
+        double next_y = ry + dy;
+        double next_yaw = MecanumModel::normalizeAngle(r_yaw + dyaw);
+
+        auto footprint = costmap_ros_->getRobotFootprint();
+        double cost = collision_checker_->footprintCostAtPose(next_x, next_y, next_yaw, footprint);
+        if (cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+          candidate_safe = false;
+          RCLCPP_WARN(logger_, "Decayed previous command candidate is unsafe! Footprint cost: %.1f", cost);
+        }
+      }
+
+      if (candidate_safe && (std::abs(candidate_vx) > 0.01 || std::abs(candidate_vy) > 0.01 || std::abs(candidate_omega) > 0.01)) {
+        RCLCPP_INFO(logger_, "Executing safe decayed previous command: vx=%.3f, vy=%.3f, omega=%.3f", candidate_vx, candidate_vy, candidate_omega);
+        cmd_vx = candidate_vx;
+        cmd_vy = candidate_vy;
+        cmd_omega = candidate_omega;
+      } else {
+        RCLCPP_WARN(logger_, "Executing zero-velocity stop fallback.");
+        cmd_vx = 0.0;
+        cmd_vy = 0.0;
+        cmd_omega = 0.0;
+      }
     } else {
-      RCLCPP_WARN(logger_, "Executing zero-velocity stop fallback.");
-      cmd_vx = 0.0;
-      cmd_vy = 0.0;
-      cmd_omega = 0.0;
+      cmd_vx = solver_output.u_opt[0];
+      cmd_vy = solver_output.u_opt[1];
+      cmd_omega = solver_output.u_opt[2];
     }
-  } else {
-    // Valid optimal control inputs: execute first control step
-    cmd_vx = solver_output.u_opt[0];
-    cmd_vy = solver_output.u_opt[1];
-    cmd_omega = solver_output.u_opt[2];
-  }
 
-  // Extra clamping step to safety bounds
-  cmd_vx = std::clamp(cmd_vx, -max_vx, max_vx);
-  cmd_vy = std::clamp(cmd_vy, -max_vy, max_vy);
-  cmd_omega = std::clamp(cmd_omega, -max_omega, max_omega);
+    cmd_vx = std::clamp(cmd_vx, -max_vx, max_vx);
+    cmd_vy = std::clamp(cmd_vy, -max_vy, max_vy);
+    cmd_omega = std::clamp(cmd_omega, -max_omega, max_omega);
 
-  // Assign cmd_vel
-  cmd_vel.twist.linear.x = cmd_vx;
-  cmd_vel.twist.linear.y = cmd_vy;
-  cmd_vel.twist.angular.z = cmd_omega;
+    cmd_vel.twist.linear.x = cmd_vx;
+    cmd_vel.twist.linear.y = cmd_vy;
+    cmd_vel.twist.angular.z = cmd_omega;
 
-  // Store command for fallback logic in next cycle
-  last_cmd_vel_.linear.x = cmd_vx;
-  last_cmd_vel_.linear.y = cmd_vy;
-  last_cmd_vel_.angular.z = cmd_omega;
+    last_cmd_vel_.linear.x = cmd_vx;
+    last_cmd_vel_.linear.y = cmd_vy;
+    last_cmd_vel_.angular.z = cmd_omega;
 
-  // 8. Publish debugging trajectory and stats
-  if (solver_output.success && !fallback_triggered) {
-    nav_msgs::msg::Path pred_path_msg;
-    pred_path_msg.header.frame_id = global_frame;
-    pred_path_msg.header.stamp = pose.header.stamp;
-    for (int i = 0; i <= horizon_steps_; ++i) {
-      geometry_msgs::msg::PoseStamped pred_pose;
-      pred_pose.header.frame_id = global_frame;
-      pred_pose.header.stamp = pose.header.stamp;
-      pred_pose.pose.position.x = solver_output.x_opt[3 * i];
-      pred_pose.pose.position.y = solver_output.x_opt[3 * i + 1];
-      pred_pose.pose.position.z = 0.0;
-      pred_pose.pose.orientation.x = 0.0;
-      pred_pose.pose.orientation.y = 0.0;
-      pred_pose.pose.orientation.z = std::sin(solver_output.x_opt[3 * i + 2] / 2.0);
-      pred_pose.pose.orientation.w = std::cos(solver_output.x_opt[3 * i + 2] / 2.0);
-      pred_path_msg.poses.push_back(pred_pose);
+    if (solver_output.success && !fallback_triggered) {
+      nav_msgs::msg::Path pred_path_msg;
+      pred_path_msg.header.frame_id = global_frame;
+      pred_path_msg.header.stamp = pose.header.stamp;
+      for (int i = 0; i <= horizon_steps_; ++i) {
+        geometry_msgs::msg::PoseStamped pred_pose;
+        pred_pose.header.frame_id = global_frame;
+        pred_pose.header.stamp = pose.header.stamp;
+        pred_pose.pose.position.x = solver_output.x_opt[3 * i];
+        pred_pose.pose.position.y = solver_output.x_opt[3 * i + 1];
+        pred_pose.pose.position.z = 0.0;
+        pred_pose.pose.orientation.x = 0.0;
+        pred_pose.pose.orientation.y = 0.0;
+        pred_pose.pose.orientation.z = std::sin(solver_output.x_opt[3 * i + 2] / 2.0);
+        pred_pose.pose.orientation.w = std::cos(solver_output.x_opt[3 * i + 2] / 2.0);
+        pred_path_msg.poses.push_back(pred_pose);
+      }
+      predicted_trajectory_pub_->publish(pred_path_msg);
     }
-    predicted_trajectory_pub_->publish(pred_path_msg);
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    double solve_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+
+    canmpc_msgs::msg::SolverStats stats_msg;
+    stats_msg.header.stamp = pose.header.stamp;
+    stats_msg.solve_time_ms = solve_time;
+    stats_msg.iter_count = solver_output.iter_count;
+    stats_msg.status = solver_output.status;
+    stats_msg.timeout_flag = (solve_time > max_solver_time_ms_);
+    stats_msg.collision_flag = collision_detected;
+    solver_stats_pub_->publish(stats_msg);
+
+    canmpc_msgs::msg::AdaptiveBounds bounds_msg;
+    bounds_msg.header.stamp = pose.header.stamp;
+    bounds_msg.vx_max = max_vx;
+    bounds_msg.vy_max = max_vy;
+    bounds_msg.omega_max = max_omega;
+    bounds_msg.d_safe = (context_copy.d_safe > 0.0 && std::isfinite(context_copy.d_safe)) ? context_copy.d_safe : d_safe_0_;
+    adaptive_bounds_pub_->publish(bounds_msg);
+
+    return cmd_vel;
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(logger_, "CANMPCController exception: %s", ex.what());
+    return cmd_vel;
+  } catch (...) {
+    RCLCPP_ERROR(logger_, "CANMPCController unknown exception.");
+    return cmd_vel;
   }
-
-  // Publish solver telemetry stats
-  auto end_time = std::chrono::high_resolution_clock::now();
-  double solve_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
-  canmpc_msgs::msg::SolverStats stats_msg;
-  stats_msg.header.stamp = pose.header.stamp;
-  stats_msg.solve_time_ms = solve_time;
-  stats_msg.iter_count = solver_output.iter_count;
-  stats_msg.status = solver_output.status;
-  stats_msg.timeout_flag = (solve_time > max_solver_time_ms_);
-  stats_msg.collision_flag = collision_detected;
-  solver_stats_pub_->publish(stats_msg);
-
-  // Publish adaptive parameter bounds
-  canmpc_msgs::msg::AdaptiveBounds bounds_msg;
-  bounds_msg.header.stamp = pose.header.stamp;
-  bounds_msg.vx_max = max_vx;
-  bounds_msg.vy_max = max_vy;
-  bounds_msg.omega_max = max_omega;
-  bounds_msg.d_safe = (context_copy.d_safe > 0.0) ? context_copy.d_safe : d_safe_0_;
-  adaptive_bounds_pub_->publish(bounds_msg);
-
-  return cmd_vel;
 }
 
 void CANMPCController::setSpeedLimit(const double & speed_limit, const bool & percentage)
