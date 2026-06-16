@@ -12,7 +12,8 @@ from launch_ros.actions import Node
 
 LOCAL_PLANNER_PRESETS = {
     "CA_NMPC": {
-        "plugin": "rai_canmpc_controller/CANMPCController",
+        "plugin": "ca_nmpc_controller/CANMPCController",
+        "use_native_solver": True,
         "horizon_steps": 20,
         "model_dt": 0.05,
         "max_solver_time_ms": 50.0,
@@ -38,7 +39,8 @@ LOCAL_PLANNER_PRESETS = {
         "w_slack": 100000.0,
     },
     "NMPC": {
-        "plugin": "rai_canmpc_controller/CANMPCController",
+        "plugin": "ca_nmpc_controller/CANMPCController",
+        "use_native_solver": True,
         "horizon_steps": 20,
         "model_dt": 0.05,
         "max_solver_time_ms": 50.0,

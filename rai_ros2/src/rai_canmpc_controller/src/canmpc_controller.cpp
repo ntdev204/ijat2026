@@ -138,14 +138,29 @@ void CANMPCController::configure(
   solver_wrapper_ = std::make_unique<SolverWrapper>(horizon_steps_, 3);
 
   // Resolve solver shared library path and load it
-  std::string package_prefix = ament_index_cpp::get_package_prefix("rai_canmpc_controller");
-  std::vector<std::string> search_paths = {
-    package_prefix + "/lib/libcanmpc_solver.so",
-    package_prefix + "/bin/canmpc_solver.dll",
-    package_prefix + "/lib/canmpc_solver.dll",
-    package_prefix + "/bin/libcanmpc_solver.dll",
-    package_prefix + "/lib/libcanmpc_solver.dll"
-  };
+  std::vector<std::string> package_prefixes;
+  try {
+    package_prefixes.push_back(ament_index_cpp::get_package_prefix("nav2_controller"));
+  } catch (const std::exception &) {
+  }
+  try {
+    package_prefixes.push_back(ament_index_cpp::get_package_prefix("rai_canmpc_controller"));
+  } catch (const std::exception &) {
+  }
+
+  std::vector<std::string> search_paths;
+  for (const auto & package_prefix : package_prefixes) {
+    search_paths.push_back(package_prefix + "/lib/libnav2_canmpc_solver.so");
+    search_paths.push_back(package_prefix + "/lib/libcanmpc_solver.so");
+    search_paths.push_back(package_prefix + "/bin/nav2_canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/lib/nav2_canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/bin/canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/lib/canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/bin/libnav2_canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/lib/libnav2_canmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/bin/libcanmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/lib/libcanmpc_solver.dll");
+  }
 
   bool loaded = false;
   std::string tried_paths = "";
