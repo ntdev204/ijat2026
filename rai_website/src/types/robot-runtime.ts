@@ -74,7 +74,7 @@ export interface ActiveDatasetPayload {
 
 export type RuntimeEnvironment = "real" | "sim";
 export type StreamState = "idle" | "connecting" | "live" | "error";
-export type GazeboViewMode = "gazebo" | "top";
+export type RvizViewMode = "perspective" | "top" | "follow";
 
 export interface RuntimeSnapshot {
   map: MapPayload | null;

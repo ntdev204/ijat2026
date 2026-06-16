@@ -4,6 +4,8 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 type LinkVisual = {
   color: THREE.Color;
   meshPath: string;
+  originPosition: THREE.Vector3;
+  originRotation: THREE.Euler;
 };
 
 type JointTransform = {
@@ -54,6 +56,8 @@ async function buildRobotModel() {
     links.set(linkName, {
       color: parseColor(linkNode.querySelector("visual material color")?.getAttribute("rgba")),
       meshPath: packageMeshToPublicPath(meshNode.getAttribute("filename") ?? ""),
+      originPosition: new THREE.Vector3(...parseVector(linkNode.querySelector("visual origin")?.getAttribute("xyz"))),
+      originRotation: new THREE.Euler(...parseVector(linkNode.querySelector("visual origin")?.getAttribute("rpy")), "XYZ"),
     });
   }
 
@@ -107,6 +111,8 @@ async function buildRobotModel() {
       roughness: 0.72,
     });
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(visual.originPosition);
+    mesh.rotation.copy(visual.originRotation);
     mesh.applyMatrix4(resolveTransform(linkName));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -114,8 +120,7 @@ async function buildRobotModel() {
   }
 
   const bounds = new THREE.Box3().setFromObject(group);
-  const center = bounds.getCenter(new THREE.Vector3());
-  group.position.sub(center);
+  group.position.z = -bounds.min.z;
   return group;
 }
 

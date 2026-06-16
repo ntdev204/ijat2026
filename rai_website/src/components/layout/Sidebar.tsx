@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { name: "Dataset", href: "/dataset", icon: Database },
   { name: "Training", href: "/training", icon: BrainCircuit },
   { name: "Map", href: "/map", icon: Map },
-  { name: "Gazebo", href: "/gazebo", icon: Bot },
+  { name: "RViz2", href: "/rviz2", icon: Bot },
 ];
 
 export function Sidebar() {
