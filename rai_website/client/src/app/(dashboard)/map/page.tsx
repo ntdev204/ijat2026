@@ -17,6 +17,8 @@ interface MapPayload {
   origin_x: number;
   origin_y: number;
   grid_data: string;
+  yaml_path?: string | null;
+  pgm_path?: string | null;
   created_at?: string | null;
 }
 
@@ -252,14 +254,17 @@ export default function MapPage() {
     }
   }, [currentMap, lastGoal, paths.global_plan, paths.local_plan, telemetry]);
 
-  async function updateNav2Config(nextLocalPlanner: string, nextGlobalPlanner: string) {
+  async function updateNav2Config(nextLocalPlanner: string, nextGlobalPlanner: string, mapId?: number) {
+    const payload: { local_planner: string; global_planner: string; map_path?: string; map_id?: number } = {
+      local_planner: nextLocalPlanner,
+      global_planner: nextGlobalPlanner,
+    };
+    if (mapId != null) payload.map_id = mapId;
+    else payload.map_path = nav2Config.map_path;
+
     const response = await fetchWithAuth("/api/nav2/config", {
       method: "POST",
-      body: JSON.stringify({
-        local_planner: nextLocalPlanner,
-        global_planner: nextGlobalPlanner,
-        map_path: nav2Config.map_path,
-      }),
+      body: JSON.stringify(payload),
     });
     setNav2Config((await response.json()) as Nav2Config);
   }
@@ -433,11 +438,7 @@ export default function MapPage() {
               </label>
               <label className="block text-sm">
                 <span className="text-xs font-medium text-slate-500">Map YAML path</span>
-                <Input
-                  value={nav2Config.map_path}
-                  onChange={(event) => setNav2Config((current) => ({ ...current, map_path: event.target.value }))}
-                  onBlur={() => void updateNav2Config(nav2Config.local_planner, nav2Config.global_planner)}
-                />
+                <Input value={nav2Config.map_path} readOnly />
               </label>
             </div>
             <div className="mt-4 flex gap-2">
@@ -480,7 +481,10 @@ export default function MapPage() {
                     onClick={async () => {
                       if (item.id == null) return;
                       const response = await fetchWithAuth(`/api/map/${item.id}`);
-                      setCurrentMap((await response.json()) as MapPayload);
+                      const nextMap = (await response.json()) as MapPayload;
+                      setCurrentMap(nextMap);
+                      await updateNav2Config(nav2Config.local_planner, nav2Config.global_planner, item.id);
+                      setStatus(`Selected map ${nextMap.name ?? `#${item.id}`} for Nav2.`);
                     }}
                   >
                     <div className="flex items-center gap-2 font-semibold text-slate-800">
@@ -488,6 +492,7 @@ export default function MapPage() {
                       <span className="truncate">{item.name ?? `Map #${item.id}`}</span>
                     </div>
                     <p className="mt-1 text-xs text-slate-400">{item.width}x{item.height}</p>
+                    <p className="mt-1 truncate text-xs text-slate-400">{item.yaml_path ?? "No YAML exported"}</p>
                   </button>
                 ))
               )}

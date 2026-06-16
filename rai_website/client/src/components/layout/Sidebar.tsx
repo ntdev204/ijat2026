@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Video, Map, PlaySquare, Database, BrainCircuit } from "lucide-react";
+import { Bot, LayoutDashboard, Video, Map, PlaySquare, Database, BrainCircuit } from "lucide-react";
 
 const NAV_ITEMS = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { name: "Dataset", href: "/dataset", icon: Database },
   { name: "Training", href: "/training", icon: BrainCircuit },
   { name: "Map", href: "/map", icon: Map },
+  { name: "Gazebo", href: "/gazebo", icon: Bot },
   { name: "Control", href: "/control", icon: PlaySquare },
 ];
 

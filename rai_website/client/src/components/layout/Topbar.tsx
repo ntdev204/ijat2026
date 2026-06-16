@@ -1,8 +1,8 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, User as UserIcon } from "lucide-react";
+import { User as UserIcon } from "lucide-react";
 
 export function Topbar() {
-  const { user, logout, authEnabled } = useAuth();
+  const { user } = useAuth();
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
@@ -21,15 +21,6 @@ export function Topbar() {
           </span>
         </div>
         
-        {authEnabled && (
-          <button 
-            onClick={logout}
-            className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-        )}
       </div>
     </header>
   );

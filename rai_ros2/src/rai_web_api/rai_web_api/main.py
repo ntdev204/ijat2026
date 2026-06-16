@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -78,6 +79,7 @@ training_state = {
     "accuracy": 0.0,
     "history": []
 }
+MAP_STORAGE_DIR = Path(os.getenv("RAI_MAP_STORAGE_DIR", "/home/rai/rai_ros2/data/map")).expanduser()
 
 
 class WebRtcOffer(BaseModel):
@@ -193,6 +195,66 @@ def _stop_process(process: Optional[subprocess.Popen]) -> dict:
             process.kill()
         process.wait(timeout=2.0)
     return {"status": "stopped", "pid": process.pid}
+
+
+def _safe_map_name(name: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in name.strip())
+    return cleaned.strip("_") or datetime.utcnow().strftime("RAI_%Y%m%d_%H%M%S")
+
+
+def _decode_grid_data(grid_data: str) -> bytes:
+    return base64.b64decode(grid_data.encode("utf-8"))
+
+
+def _write_saved_map_files(map_name: str, map_payload: dict) -> tuple[Path, Path]:
+    MAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    base_name = _safe_map_name(map_name)
+    yaml_path = MAP_STORAGE_DIR / f"{base_name}.yaml"
+    pgm_path = MAP_STORAGE_DIR / f"{base_name}.pgm"
+    suffix = 2
+    while yaml_path.exists() or pgm_path.exists():
+        yaml_path = MAP_STORAGE_DIR / f"{base_name}_{suffix}.yaml"
+        pgm_path = MAP_STORAGE_DIR / f"{base_name}_{suffix}.pgm"
+        suffix += 1
+
+    width = int(map_payload["width"])
+    height = int(map_payload["height"])
+    raw = _decode_grid_data(map_payload["grid_data"])
+    if len(raw) != width * height:
+        raise ValueError("Occupancy grid size does not match width/height")
+
+    pixels = bytearray(width * height)
+    for row in range(height):
+        for col in range(width):
+            source_index = (height - 1 - row) * width + col
+            value = raw[source_index]
+            if value == 255:
+                color = 205
+            elif value >= 100:
+                color = 0
+            elif value == 0:
+                color = 254
+            else:
+                color = max(0, 254 - int(value * 2.54))
+            pixels[row * width + col] = color
+
+    with pgm_path.open("wb") as handle:
+        handle.write(f"P5\n{width} {height}\n255\n".encode("ascii"))
+        handle.write(pixels)
+
+    yaml_payload = {
+        "image": pgm_path.name,
+        "mode": "trinary",
+        "resolution": float(map_payload["resolution"]),
+        "origin": [float(map_payload["origin_x"]), float(map_payload["origin_y"]), 0.0],
+        "negate": 0,
+        "occupied_thresh": 0.65,
+        "free_thresh": 0.25,
+    }
+    with yaml_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(yaml_payload, handle, sort_keys=False)
+
+    return yaml_path, pgm_path
 
 
 def _spin_ros_node() -> None:
@@ -441,10 +503,9 @@ async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends
         saved_map = await db.get(SavedMap, request.map_id)
         if saved_map is None:
             raise HTTPException(status_code=404, detail="Saved map not found")
-        raise HTTPException(
-            status_code=400,
-            detail="Database-saved maps do not contain a reusable Nav2 YAML path yet. Provide map_path instead.",
-        )
+        if not saved_map.yaml_path:
+            raise HTTPException(status_code=400, detail="Saved map does not have an exported YAML path")
+        nav2_runtime_config["map_path"] = saved_map.yaml_path
 
     if request.map_path:
         nav2_runtime_config["map_path"] = request.map_path
@@ -558,6 +619,11 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
         )
 
     # Lưu bản đồ vào cơ sở dữ liệu
+    try:
+        yaml_path, pgm_path = _write_saved_map_files(request.name, current_map)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to export map files: {exc}") from exc
+
     saved_map = SavedMap(
         name=request.name,
         width=current_map["width"],
@@ -566,6 +632,8 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
         origin_x=current_map["origin_x"],
         origin_y=current_map["origin_y"],
         grid_data=current_map["grid_data"],
+        yaml_path=str(yaml_path),
+        pgm_path=str(pgm_path),
         created_at=datetime.utcnow()
     )
     db.add(saved_map)
@@ -575,7 +643,9 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
     return {
         "success": True,
         "message": f"Map '{request.name}' saved successfully",
-        "map_id": saved_map.id
+        "map_id": saved_map.id,
+        "yaml_path": saved_map.yaml_path,
+        "pgm_path": saved_map.pgm_path,
     }
 
 
@@ -592,6 +662,8 @@ async def list_maps(db: AsyncSession = Depends(get_db)) -> list[dict]:
             "resolution": m.resolution,
             "origin_x": m.origin_x,
             "origin_y": m.origin_y,
+            "yaml_path": m.yaml_path,
+            "pgm_path": m.pgm_path,
             "created_at": m.created_at.isoformat() if m.created_at else None
         }
         for m in maps
@@ -612,6 +684,8 @@ async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
         "origin_x": saved_map.origin_x,
         "origin_y": saved_map.origin_y,
         "grid_data": saved_map.grid_data,
+        "yaml_path": saved_map.yaml_path,
+        "pgm_path": saved_map.pgm_path,
         "created_at": saved_map.created_at.isoformat() if saved_map.created_at else None
     }
 

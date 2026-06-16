@@ -1,6 +1,6 @@
 "use client";
 
-import { getValidAccessToken, getWebSocketBaseUrl } from "@/lib/api";
+import { getWebSocketBaseUrl } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 function resolveWebSocketPath(path: string) {
@@ -38,14 +38,12 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
       const connectionGeneration = connectionGenerationRef.current + 1;
       connectionGenerationRef.current = connectionGeneration;
       void (async () => {
-        const token = await getValidAccessToken();
         if (!isMounted.current || connectionGenerationRef.current !== connectionGeneration) {
           return;
         }
 
         const url = new URL(`${getWebSocketBaseUrl()}${resolveWebSocketPath(path)}`);
-        const protocols = token ? ["auth", `bearer.${token}`] : ["auth"];
-        const ws = new WebSocket(url.toString(), protocols);
+        const ws = new WebSocket(url.toString());
         ws.binaryType = binaryType;
         wsRef.current = ws;
 

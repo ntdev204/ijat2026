@@ -134,6 +134,8 @@ class SavedMap(Base):
     origin_x = Column(Float, nullable=False)
     origin_y = Column(Float, nullable=False)
     grid_data = Column(Text, nullable=False)  # Base64 encoded occupancy grid data or JSON string
+    yaml_path = Column(String(250), nullable=True)
+    pgm_path = Column(String(250), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # --- DATABASE ENGINE & SESSION MANAGERS ---
@@ -214,6 +216,10 @@ async def _ensure_schema_columns(conn):
             ('solve_time_median_ms', 'FLOAT'),
             ('solve_time_p95_ms', 'FLOAT'),
             ('solve_time_max_ms', 'FLOAT'),
+        ],
+        'saved_maps': [
+            ('yaml_path', 'VARCHAR(250)'),
+            ('pgm_path', 'VARCHAR(250)'),
         ],
     }
 

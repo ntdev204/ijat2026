@@ -43,60 +43,8 @@ export class ApiError extends Error {
   }
 }
 
-function parseJwtExp(token: string): number | null {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1] || ""));
-    const exp = Number(payload?.exp);
-    return Number.isFinite(exp) ? exp : null;
-  } catch {
-    return null;
-  }
-}
-
-async function refreshAccessToken(refreshToken: string): Promise<{ access: string; refresh: string } | null> {
-  try {
-    const refreshRes = await fetch(resolveApiEndpoint("/api/auth/refresh"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-
-    if (!refreshRes.ok) return null;
-    const data = await refreshRes.json();
-    if (!data?.access_token || !data?.refresh_token) return null;
-    return { access: data.access_token, refresh: data.refresh_token };
-  } catch {
-    return null;
-  }
-}
-
-export async function getValidAccessToken(): Promise<string | null> {
-  const token = localStorage.getItem("access_token");
-  if (!token) return null;
-
-  const exp = parseJwtExp(token);
-  const now = Math.floor(Date.now() / 1000);
-  const skew = 30;
-  if (exp && exp > now + skew) return token;
-
-  const refreshToken = localStorage.getItem("refresh_token");
-  if (!refreshToken) return null;
-
-  const refreshed = await refreshAccessToken(refreshToken);
-  if (!refreshed) return null;
-
-  localStorage.setItem("access_token", refreshed.access);
-  localStorage.setItem("refresh_token", refreshed.refresh);
-  return refreshed.access;
-}
-
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-  const token = await getValidAccessToken();
-  
   const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -106,23 +54,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     headers,
   };
 
-  let response = await fetch(resolveApiEndpoint(endpoint), config);
-
-  if (response.status === 401) {
-    const refreshToken = localStorage.getItem("refresh_token");
-    const refreshed = refreshToken ? await refreshAccessToken(refreshToken) : null;
-
-    if (refreshed) {
-      localStorage.setItem("access_token", refreshed.access);
-      localStorage.setItem("refresh_token", refreshed.refresh);
-      headers.set("Authorization", `Bearer ${refreshed.access}`);
-      response = await fetch(resolveApiEndpoint(endpoint), { ...options, headers });
-    } else {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      window.location.href = "/login";
-    }
-  }
+  const response = await fetch(resolveApiEndpoint(endpoint), config);
 
   if (!response.ok) {
     let message = "An error occurred";
