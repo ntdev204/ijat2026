@@ -17,6 +17,13 @@ export default function MonitorPage() {
   const monitor = useMonitorRuntime();
   const route = useMonitorRouteControl(monitor.mapCanvasRef, monitor.mapData, monitor.telemetry, monitor.paths, nav2.nav2Config);
   const { live, mapCanvasRef, mapData, message, paths, state, telemetry, videoRef } = monitor;
+  const handleSelectNav2Map = async (mapId: string) => {
+    await nav2.selectNav2Map(mapId);
+    const parsedMapId = Number.parseInt(mapId, 10);
+    if (Number.isFinite(parsedMapId)) {
+      await monitor.showSavedMap(parsedMapId);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -76,7 +83,7 @@ export default function MonitorPage() {
         nav2LocalOptions={nav2.nav2LocalOptions}
         loadNav2State={nav2.loadNav2State}
         updateNav2Config={nav2.updateNav2Config}
-        selectNav2Map={nav2.selectNav2Map}
+        selectNav2Map={handleSelectNav2Map}
         startNav2={nav2.startNav2}
         stopNav2={nav2.stopNav2}
       />

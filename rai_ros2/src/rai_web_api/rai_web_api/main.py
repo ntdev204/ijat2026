@@ -193,10 +193,18 @@ def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, 
     )
 
 
-def _start_process(command: str) -> subprocess.Popen:
+def _ros_runtime_env() -> dict:
+    env = os.environ.copy()
+    env.setdefault("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
+    env.setdefault("RCUTILS_LOGGING_BUFFERED_STREAM", "1")
+    return env
+
+
+def _start_process(command: str, env: Optional[dict] = None) -> subprocess.Popen:
     kwargs = {}
     if hasattr(os, "setsid"):
         kwargs["preexec_fn"] = os.setsid
+    kwargs["env"] = env or os.environ.copy()
     return subprocess.Popen(command, shell=True, **kwargs)
 
 
@@ -659,7 +667,7 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
         nav2_runtime_config["local_planner"],
         nav2_runtime_config["global_planner"],
     )
-    nav2_process = _start_process(command)
+    nav2_process = _start_process(command, env=_ros_runtime_env())
     nav2_runtime_config["last_command"] = command
     if bridge_node is not None:
         with bridge_node.lock:
@@ -689,7 +697,7 @@ async def start_slam() -> dict:
     if slam_process is not None and slam_process.poll() is None:
         return {"success": True, "message": "SLAM is already running"}
     command = "ros2 launch rai_slam_toolbox online_async_launch.py"
-    slam_process = _start_process(command)
+    slam_process = _start_process(command, env=_ros_runtime_env())
     if bridge_node is not None:
         with bridge_node.lock:
             bridge_node.telemetry["context"]["navigation_mode"] = "slam"

@@ -15,6 +15,7 @@ export interface MonitorRuntime {
   mapData: MapPayload | null;
   paths: PathsPayload;
   live: boolean;
+  showSavedMap: (mapId: number) => Promise<void>;
 }
 
 export function useMonitorRuntime(): MonitorRuntime {
@@ -39,6 +40,11 @@ export function useMonitorRuntime(): MonitorRuntime {
     } catch {
       // Leave monitor map empty when neither live nor saved maps are available.
     }
+  }, []);
+
+  const showSavedMap = useCallback(async (mapId: number) => {
+    const response = await fetchWithAuth(`/api/map/${mapId}`);
+    setMapData((await response.json()) as MapPayload);
   }, []);
 
   useWebSocket("/ws/telemetry", {
@@ -141,6 +147,7 @@ export function useMonitorRuntime(): MonitorRuntime {
     mapData,
     paths,
     live: state === "live",
+    showSavedMap,
   };
 }
 
