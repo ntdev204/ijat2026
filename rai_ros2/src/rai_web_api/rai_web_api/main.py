@@ -67,6 +67,7 @@ nav2_runtime_config = {
     "local_planner": os.getenv("RAI_NAV2_LOCAL_PLANNER", "CA_NMPC").upper(),
     "global_planner": os.getenv("RAI_NAV2_GLOBAL_PLANNER", "A_STAR").upper(),
     "map_path": os.getenv("RAI_NAV2_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
+    "selected_map_id": None,
     "params_path": os.getenv("RAI_NAV2_PARAMS", ""),
     "last_command": None,
 }
@@ -616,9 +617,11 @@ async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends
         if not saved_map.yaml_path:
             raise HTTPException(status_code=400, detail="Saved map does not have an exported YAML path")
         nav2_runtime_config["map_path"] = saved_map.yaml_path
+        nav2_runtime_config["selected_map_id"] = saved_map.id
 
     if request.map_path:
         nav2_runtime_config["map_path"] = request.map_path
+        nav2_runtime_config["selected_map_id"] = None
     if request.params_path:
         nav2_runtime_config["params_path"] = request.params_path
     nav2_runtime_config["local_planner"] = local_planner

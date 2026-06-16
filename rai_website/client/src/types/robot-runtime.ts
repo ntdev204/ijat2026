@@ -37,6 +37,7 @@ export interface Nav2Config {
   local_planner: string;
   global_planner: string;
   map_path: string;
+  selected_map_id?: number | null;
   running: boolean;
 }
 

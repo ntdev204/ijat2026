@@ -70,10 +70,13 @@ export default function MonitorPage() {
         busy={nav2.busy}
         message={nav2.message}
         nav2Config={nav2.nav2Config}
+        nav2Maps={nav2.nav2Maps}
+        selectedMapId={nav2.selectedMapId}
         nav2GlobalOptions={nav2.nav2GlobalOptions}
         nav2LocalOptions={nav2.nav2LocalOptions}
         loadNav2State={nav2.loadNav2State}
         updateNav2Config={nav2.updateNav2Config}
+        selectNav2Map={nav2.selectNav2Map}
         startNav2={nav2.startNav2}
         stopNav2={nav2.stopNav2}
       />

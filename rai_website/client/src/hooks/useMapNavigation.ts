@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
 import { drawOccupancyMap } from "@/lib/map-canvas";
+import { writeSelectedMapId } from "@/lib/map-selection";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
 import type { MapPayload } from "@/types/robot-runtime";
 
@@ -64,6 +65,7 @@ export function useMapNavigation(): MapNavigationRuntime {
       if (currentMap == null && savedMaps[0]?.id != null) {
         const mapResponse = await fetchWithAuth(`/api/map/${savedMaps[0].id}`);
         setCurrentMap((await mapResponse.json()) as MapPayload);
+        writeSelectedMapId(savedMaps[0].id);
       }
     } catch {
       setMaps([]);
@@ -134,6 +136,7 @@ export function useMapNavigation(): MapNavigationRuntime {
     const response = await fetchWithAuth(`/api/map/${map.id}`);
     const nextMap = (await response.json()) as MapPayload;
     setCurrentMap(nextMap);
+    writeSelectedMapId(map.id);
     setStatus(`Loaded map ${nextMap.name ?? `#${map.id}`}.`);
   }, []);
 
@@ -165,7 +168,13 @@ export function useMapNavigation(): MapNavigationRuntime {
       try {
         await fetchWithAuth(`/api/map/${map.id}/delete`, { method: "POST" });
         setMaps((items) => items.filter((item) => item.id !== map.id));
-        setCurrentMap((current) => (current?.id === map.id ? null : current));
+        setCurrentMap((current) => {
+          if (current?.id === map.id) {
+            writeSelectedMapId(null);
+            return null;
+          }
+          return current;
+        });
         setStatus(`Deleted map ${map.name ?? `#${map.id}`}.`);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Delete map failed.");

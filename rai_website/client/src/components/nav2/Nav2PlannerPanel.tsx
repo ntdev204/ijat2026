@@ -10,10 +10,13 @@ export interface Nav2PlannerPanelProps {
   busy: boolean;
   message?: string;
   nav2Config: Nav2Config;
+  nav2Maps: Array<{ id?: number; name?: string; yaml_path?: string | null }>;
+  selectedMapId: string;
   nav2GlobalOptions: Nav2Option[];
   nav2LocalOptions: Nav2Option[];
   loadNav2State?: () => Promise<void>;
   updateNav2Config: (localPlanner: string, globalPlanner: string, mapId?: number) => Promise<void>;
+  selectNav2Map: (mapId: string) => Promise<void>;
   startNav2: () => Promise<void>;
   stopNav2: () => Promise<void>;
 }
@@ -22,10 +25,13 @@ export function Nav2PlannerPanel({
   busy,
   message,
   nav2Config,
+  nav2Maps,
+  selectedMapId,
   nav2GlobalOptions,
   nav2LocalOptions,
   loadNav2State,
   updateNav2Config,
+  selectNav2Map,
   startNav2,
   stopNav2,
 }: Nav2PlannerPanelProps) {
@@ -42,6 +48,20 @@ export function Nav2PlannerPanel({
       </div>
 
       <div className="grid gap-3">
+        <label className="block text-sm">
+          <span className="text-xs font-medium text-slate-500">Nav2 map</span>
+          <DropdownField
+            value={selectedMapId}
+            onValueChange={(value) => void selectNav2Map(value)}
+            options={nav2Maps
+              .filter((map) => map.id != null)
+              .map((map) => ({
+                value: String(map.id),
+                label: map.name ?? `Map #${map.id}`,
+              }))}
+            placeholder="Select saved map"
+          />
+        </label>
         <label className="block text-sm">
           <span className="text-xs font-medium text-slate-500">Local planner</span>
           <DropdownField
