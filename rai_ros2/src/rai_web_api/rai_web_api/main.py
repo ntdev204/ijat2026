@@ -163,10 +163,7 @@ def _default_nav2_params_path() -> Path:
 
 
 def _default_nav2_map_path() -> Path:
-    data_path = Path("/home/rai/rai_ros2/data/map/RAI.yaml")
-    if data_path.exists():
-        return data_path
-    return _nav2_package_share() / "map" / "RAI.yaml"
+    return Path("/home/rai/rai_ros2/data/map/RAI.yaml")
 
 
 def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_params_path: Path) -> Path:
@@ -195,7 +192,13 @@ def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, 
 
 def _ros_runtime_env() -> dict:
     env = os.environ.copy()
-    env.setdefault("RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp")
+    cyclone_library = Path("/opt/ros/humble/lib/librmw_cyclonedds_cpp.so")
+    if cyclone_library.exists():
+        env["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
+        env.pop("FASTDDS_BUILTIN_TRANSPORTS", None)
+    else:
+        env["RMW_IMPLEMENTATION"] = "rmw_fastrtps_cpp"
+        env["FASTDDS_BUILTIN_TRANSPORTS"] = "UDPv4"
     env.setdefault("RCUTILS_LOGGING_BUFFERED_STREAM", "1")
     return env
 
@@ -338,7 +341,7 @@ async def startup() -> None:
     if not nav2_runtime_config["params_path"]:
         nav2_runtime_config["params_path"] = str(_default_nav2_params_path())
     if not Path(nav2_runtime_config["map_path"]).exists():
-        nav2_runtime_config["map_path"] = str(_default_nav2_map_path())
+        nav2_runtime_config["map_path"] = ""
     logger.info("Rai Web API started on robot.")
 
 
@@ -643,14 +646,12 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
     if nav2_process is not None and nav2_process.poll() is None:
         return {"success": True, "message": "Nav2 is already running", **(await nav2_config())}
 
-    map_path = Path(nav2_runtime_config["map_path"] or _default_nav2_map_path())
+    if not nav2_runtime_config["map_path"]:
+        raise HTTPException(status_code=400, detail="No Nav2 map selected. Choose a saved map before starting Nav2.")
+
+    map_path = Path(nav2_runtime_config["map_path"])
     if not map_path.exists():
-        fallback_map = _default_nav2_map_path()
-        if fallback_map.exists():
-            map_path = fallback_map
-            nav2_runtime_config["map_path"] = str(fallback_map)
-        else:
-            raise HTTPException(status_code=404, detail=f"Map file not found: {map_path}")
+        raise HTTPException(status_code=404, detail=f"Selected Nav2 map file not found: {map_path}")
 
     base_params_path = Path(nav2_runtime_config["params_path"] or _default_nav2_params_path())
     if not base_params_path.exists():

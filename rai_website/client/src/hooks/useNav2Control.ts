@@ -23,7 +23,7 @@ export interface Nav2ControlRuntime {
 const DEFAULT_NAV2_CONFIG: Nav2Config = {
   local_planner: "CA_NMPC",
   global_planner: "A_STAR",
-  map_path: "/home/rai/rai_ros2/data/map/RAI.yaml",
+  map_path: "",
   running: false,
 };
 
@@ -123,6 +123,9 @@ export function useNav2Control(): Nav2ControlRuntime {
     setBusy(true);
     try {
       const parsedMapId = selectedMapId ? Number.parseInt(selectedMapId, 10) : NaN;
+      if (!Number.isFinite(parsedMapId)) {
+        throw new Error("No Nav2 map selected. Choose a saved map before starting Nav2.");
+      }
       if (Number.isFinite(parsedMapId)) {
         await fetchWithAuth("/api/nav2/config", {
           method: "POST",

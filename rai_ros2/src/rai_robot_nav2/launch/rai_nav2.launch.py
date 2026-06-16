@@ -300,8 +300,6 @@ def generate_launch_description():
     rai_nav_launch_dir = os.path.join(rai_nav_dir, "launch")
 
     map_default = "/home/rai/rai_ros2/data/map/RAI.yaml"
-    if not os.path.exists(map_default):
-        map_default = os.path.join(rai_nav_dir, "map", "RAI.yaml")
     map_file = LaunchConfiguration("map")
 
     param_dir = os.path.join(rai_nav_dir, "param", "rai_params")

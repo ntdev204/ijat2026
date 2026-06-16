@@ -35,7 +35,7 @@ endif()
 # Install
 ################################################################################
 install(
-  DIRECTORY launch map param rviz
+  DIRECTORY launch param rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

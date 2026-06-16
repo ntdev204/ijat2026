@@ -35,6 +35,8 @@ export function Nav2PlannerPanel({
   startNav2,
   stopNav2,
 }: Nav2PlannerPanelProps) {
+  const hasSelectedMap = selectedMapId.length > 0;
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -85,7 +87,7 @@ export function Nav2PlannerPanel({
       </div>
 
       <div className="mt-4 flex gap-2">
-        <Button type="button" className="gap-2" disabled={busy || nav2Config.running} onClick={() => void startNav2()}>
+        <Button type="button" className="gap-2" disabled={busy || nav2Config.running || !hasSelectedMap} onClick={() => void startNav2()}>
           <Play className="size-4" />
           Start Nav2
         </Button>
@@ -98,6 +100,7 @@ export function Nav2PlannerPanel({
       <p className="mt-3 text-sm text-slate-500">
         Running: {nav2Config.running ? "yes" : "no"} | {nav2Config.local_planner} + {nav2Config.global_planner}
       </p>
+      {!hasSelectedMap && <p className="mt-2 text-sm text-amber-600">Select a saved map before starting Nav2.</p>}
       {message && <p className="mt-2 text-sm text-slate-500">{message}</p>}
     </section>
   );
