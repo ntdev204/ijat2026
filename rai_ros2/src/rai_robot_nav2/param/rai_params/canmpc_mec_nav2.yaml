@@ -94,7 +94,7 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     FollowPath:
-      plugin: "rai_canmpc_controller::CANMPCController"
+      plugin: "rai_canmpc_controller/CANMPCController"
       horizon_steps: 20
       model_dt: 0.05
       max_solver_time_ms: 50.0

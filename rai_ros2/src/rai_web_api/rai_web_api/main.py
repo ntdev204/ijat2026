@@ -52,8 +52,8 @@ nav2_process: Optional[subprocess.Popen] = None
 slam_process: Optional[subprocess.Popen] = None
 
 NAV2_LOCAL_PLANNER_OPTIONS = [
-    {"id": "CA_NMPC", "label": "CA-NMPC", "plugin": "rai_canmpc_controller::CANMPCController", "native": True},
-    {"id": "NMPC", "label": "NMPC", "plugin": "rai_canmpc_controller::CANMPCController", "native": False},
+    {"id": "CA_NMPC", "label": "CA-NMPC", "plugin": "rai_canmpc_controller/CANMPCController", "native": True},
+    {"id": "NMPC", "label": "NMPC", "plugin": "rai_canmpc_controller/CANMPCController", "native": False},
     {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
     {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
     {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
