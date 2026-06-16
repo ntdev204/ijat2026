@@ -188,8 +188,27 @@ void CANMPCController::deactivate()
 
 void CANMPCController::setPlan(const nav_msgs::msg::Path & path)
 {
-  current_global_plan_ = path;
-  plan_handler_.setGlobalPlan(path);
+  auto normalized_path = path;
+
+  if (normalized_path.header.frame_id.empty()) {
+    normalized_path.header.frame_id = costmap_ros_->getGlobalFrameID();
+    RCLCPP_WARN(
+      logger_,
+      "Received global plan with empty header frame_id. Falling back to %s.",
+      normalized_path.header.frame_id.c_str());
+  }
+
+  for (auto & pose : normalized_path.poses) {
+    if (pose.header.frame_id.empty()) {
+      pose.header.frame_id = normalized_path.header.frame_id;
+    }
+    if (pose.header.stamp.sec == 0 && pose.header.stamp.nanosec == 0) {
+      pose.header.stamp = normalized_path.header.stamp;
+    }
+  }
+
+  current_global_plan_ = normalized_path;
+  plan_handler_.setGlobalPlan(normalized_path);
 }
 
 void CANMPCController::getSpeedLimits(
