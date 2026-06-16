@@ -1,6 +1,7 @@
 "use client";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
 import { BrainCircuit, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -104,24 +105,14 @@ export default function TrainingPage() {
           </label>
         </div>
         <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={startTraining}
-            disabled={busy || status.running}
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
+          <Button type="button" onClick={startTraining} disabled={busy || status.running} className="gap-2">
             <Play className="h-4 w-4" />
             Start
-          </button>
-          <button
-            type="button"
-            onClick={() => void loadStatus()}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void loadStatus()} disabled={busy} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
-          </button>
+          </Button>
         </div>
       </section>
 

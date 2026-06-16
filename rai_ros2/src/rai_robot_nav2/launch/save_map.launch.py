@@ -10,7 +10,7 @@ import launch_ros.actions
 
 
 def _default_dirs():
-    package_share = Path(get_package_share_directory('rai_robot_nav2')).resolve()
+    package_share = Path(get_package_share_directory('rai_nav2')).resolve()
     workspace_dir = package_share.parents[3] if len(package_share.parents) > 3 else package_share
     source_map_dir = workspace_dir / 'src' / 'rai_robot_nav2' / 'map'
 

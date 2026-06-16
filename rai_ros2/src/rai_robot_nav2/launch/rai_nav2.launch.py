@@ -233,7 +233,7 @@ def generate_launch_description():
     slam = LaunchConfiguration("slam", default="False")
     runtime_params = LaunchConfiguration("runtime_params")
 
-    rai_nav_dir = get_package_share_directory("rai_robot_nav2")
+    rai_nav_dir = get_package_share_directory("rai_nav2")
     rai_nav_launch_dir = os.path.join(rai_nav_dir, "launch")
 
     map_default = "/home/rai/rai_ros2/data/map/RAI.yaml"

@@ -1,6 +1,8 @@
 "use client";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { DropdownField } from "@/components/ui/dropdown-field";
 import { fetchWithAuth, resolveApiEndpoint } from "@/lib/api";
 import { Database, Download, Play, RefreshCw, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -146,58 +148,41 @@ export default function DatasetPage() {
         <div className="grid gap-3 md:grid-cols-4">
           <label className="block text-sm">
             <span className="text-xs font-medium text-slate-500">Scenario</span>
-            <select
+            <DropdownField
               value={scenarioName}
-              onChange={(event) => setScenarioName(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              {[scenarioName, ...scenarios.map((item) => item.name)]
+              onValueChange={setScenarioName}
+              options={[scenarioName, ...scenarios.map((item) => item.name)]
                 .filter((value, index, values) => value && values.indexOf(value) === index)
-                .map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+                .map((name) => ({ value: name, label: name }))}
+            />
           </label>
           <TextInput label="Controller" value={controllerId} onChange={setControllerId} />
           <label className="block text-sm">
             <span className="text-xs font-medium text-slate-500">Environment</span>
-            <select
+            <DropdownField
               value={environment}
-              onChange={(event) => setEnvironment(event.target.value as "real" | "sim")}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="real">real</option>
-              <option value="sim">sim</option>
-            </select>
+              onValueChange={(value) => setEnvironment(value as "real" | "sim")}
+              options={[
+                { value: "real", label: "real" },
+                { value: "sim", label: "sim" },
+              ]}
+            />
           </label>
           <TextInput label="Split" value={split} onChange={setSplit} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={startDataset}
-            disabled={busy || active.active}
-            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
+          <Button type="button" onClick={startDataset} disabled={busy || active.active} className="gap-2">
             <Play className="h-4 w-4" />
             Start
-          </button>
-          <button
-            type="button"
-            onClick={stopDataset}
-            disabled={busy || !active.active}
-            className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={stopDataset} disabled={busy || !active.active} className="gap-2">
             <Square className="h-4 w-4" />
             Stop
-          </button>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void refresh()} disabled={busy} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -207,15 +192,10 @@ export default function DatasetPage() {
           <TextInput label="Tag" value={captureTag} onChange={setCaptureTag} />
           <TextInput label="Class" value={captureClass} onChange={setCaptureClass} />
           <div className="flex items-end">
-            <button
-              type="button"
-              onClick={captureLabeledSample}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
-            >
+            <Button type="button" variant="outline" onClick={captureLabeledSample} disabled={busy} className="gap-2">
               <Database className="h-4 w-4" />
               Capture sample
-            </button>
+            </Button>
           </div>
         </div>
       </section>

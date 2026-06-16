@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { DropdownField } from "@/components/ui/dropdown-field";
 import { Input } from "@/components/ui/input";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
-import { LocateFixed, Map as MapIcon, Navigation, Play, RefreshCw, Save, Square, Users, Waypoints } from "lucide-react";
+import { LocateFixed, Map as MapIcon, Navigation, Play, Radar, RefreshCw, Save, Square, Users, Waypoints } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface MapPayload {
@@ -295,6 +296,32 @@ export default function MapPage() {
     }
   }
 
+  async function startSlam() {
+    setBusy(true);
+    try {
+      const response = await fetchWithAuth("/api/robot/slam/start", { method: "POST" });
+      const payload = await response.json();
+      setStatus(payload.message ?? "SLAM started.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "SLAM start failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stopSlam() {
+    setBusy(true);
+    try {
+      const response = await fetchWithAuth("/api/robot/slam/stop", { method: "POST" });
+      const payload = await response.json();
+      setStatus(payload.message ?? "SLAM stopped.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "SLAM stop failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveMap() {
     const name = mapName.trim();
     if (!name) {
@@ -418,23 +445,19 @@ export default function MapPage() {
             <div className="grid gap-3">
               <label className="block text-sm">
                 <span className="text-xs font-medium text-slate-500">Local planner</span>
-                <select
+                <DropdownField
                   value={nav2Config.local_planner}
-                  onChange={(event) => void updateNav2Config(event.target.value, nav2Config.global_planner)}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  {nav2LocalOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                </select>
+                  onValueChange={(value) => void updateNav2Config(value, nav2Config.global_planner)}
+                  options={nav2LocalOptions}
+                />
               </label>
               <label className="block text-sm">
                 <span className="text-xs font-medium text-slate-500">Global planner</span>
-                <select
+                <DropdownField
                   value={nav2Config.global_planner}
-                  onChange={(event) => void updateNav2Config(nav2Config.local_planner, event.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  {nav2GlobalOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-                </select>
+                  onValueChange={(value) => void updateNav2Config(nav2Config.local_planner, value)}
+                  options={nav2GlobalOptions}
+                />
               </label>
               <label className="block text-sm">
                 <span className="text-xs font-medium text-slate-500">Map YAML path</span>
@@ -454,6 +477,21 @@ export default function MapPage() {
             <p className="mt-3 text-sm text-slate-500">
               Running: {nav2Config.running ? "yes" : "no"} | {nav2Config.local_planner} + {nav2Config.global_planner}
             </p>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">SLAM / Scan</h3>
+            <div className="flex gap-2">
+              <Button type="button" className="gap-2" disabled={busy} onClick={() => void startSlam()}>
+                <Radar className="size-4" />
+                Start SLAM
+              </Button>
+              <Button type="button" variant="outline" className="gap-2" disabled={busy} onClick={() => void stopSlam()}>
+                <Square className="size-4" />
+                Stop
+              </Button>
+            </div>
+            <p className="mt-3 text-sm text-slate-500">Use this mode to scan and update the live map before saving it for Nav2 reuse.</p>
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

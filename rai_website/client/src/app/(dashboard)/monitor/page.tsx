@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
 import { Map as MapIcon, Users, Video, VideoOff, Waypoints } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface MapPayload {
   width: number;
@@ -86,7 +86,7 @@ export default function MonitorPage() {
     },
   });
 
-  async function stopStream() {
+  const stopStream = useCallback(async () => {
     pcRef.current?.close();
     pcRef.current = null;
     if (videoRef.current?.srcObject) {
@@ -96,9 +96,9 @@ export default function MonitorPage() {
     }
     setState("idle");
     setMessage("Camera stream stopped.");
-  }
+  }, []);
 
-  async function startStream() {
+  const startStream = useCallback(async () => {
     await stopStream();
     setState("connecting");
     setMessage("Negotiating WebRTC with rai_web_api...");
@@ -141,7 +141,7 @@ export default function MonitorPage() {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Cannot start WebRTC stream.");
     }
-  }
+  }, [stopStream]);
 
   useEffect(() => {
     return () => {
@@ -149,6 +149,13 @@ export default function MonitorPage() {
       pcRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void startStream();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [startStream]);
 
   useEffect(() => {
     const canvas = mapCanvasRef.current;
@@ -263,26 +270,7 @@ export default function MonitorPage() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[220px_1fr]">
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => void startStream()}
-            disabled={state === "connecting"}
-            className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            Start Stream
-          </button>
-          <button
-            type="button"
-            onClick={() => void stopStream()}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-          >
-            Stop
-          </button>
-        </div>
-
-        <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+      <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
           {message}
           {(telemetry?.humans.length ?? 0) > 0 && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -293,7 +281,6 @@ export default function MonitorPage() {
               ))}
             </div>
           )}
-        </div>
       </div>
     </div>
   );
