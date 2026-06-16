@@ -27,6 +27,20 @@ export function useMonitorRuntime(): MonitorRuntime {
   const [mapData, setMapData] = useState<MapPayload | null>(null);
   const [paths, setPaths] = useState<PathsPayload>({});
 
+  const loadFallbackMap = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/map/list");
+      const savedMaps = (await response.json()) as MapPayload[];
+      const latestMapId = savedMaps[0]?.id;
+      if (latestMapId == null) return;
+      const mapResponse = await fetchWithAuth(`/api/map/${latestMapId}`);
+      const fallbackMap = (await mapResponse.json()) as MapPayload;
+      setMapData((current) => current ?? fallbackMap);
+    } catch {
+      // Leave monitor map empty when neither live nor saved maps are available.
+    }
+  }, []);
+
   useWebSocket("/ws/telemetry", {
     onMessage: (event) => {
       try {
@@ -109,6 +123,14 @@ export function useMonitorRuntime(): MonitorRuntime {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [startStream]);
+
+  useEffect(() => {
+    if (mapData != null) return;
+    const timer = window.setTimeout(() => {
+      void loadFallbackMap();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [loadFallbackMap, mapData]);
 
   return {
     videoRef,

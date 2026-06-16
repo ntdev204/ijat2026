@@ -421,6 +421,7 @@ async def map_ws(websocket: WebSocket) -> None:
         await websocket.close(code=1011)
         return
 
+    bridge_node.ensure_map_subscription()
     await websocket.accept()
     bridge_node.register_map_client()
     try:

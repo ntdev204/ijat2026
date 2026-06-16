@@ -111,9 +111,6 @@ function VideoPanel({ live, message, state, videoRef }: VideoPanelProps) {
           </div>
         )}
       </div>
-      <div className="border-t border-slate-800 px-4 py-3 text-sm text-slate-300">
-        2D bbox overlay is unavailable until the perception pipeline publishes image-space detections. Current `/canmpc/humans` only exposes tracked world poses.
-      </div>
     </section>
   );
 }
