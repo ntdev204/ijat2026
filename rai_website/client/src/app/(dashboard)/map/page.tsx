@@ -4,11 +4,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMapNavigation } from "@/hooks/useMapNavigation";
 import type { MapPayload } from "@/types/robot-runtime";
-import { Map as MapIcon, Navigation, Radar, RefreshCw, Save, Square } from "lucide-react";
+import { Map as MapIcon, Navigation, Pencil, Radar, RefreshCw, Save, Square, Trash2, X } from "lucide-react";
+import { useState } from "react";
 
 export default function MapPage() {
   const runtime = useMapNavigation();
-  const { busy, currentMap, loadMaps, mapName, maps, saveMap, selectSavedMap, setMapName, startSlam, status, stopSlam } = runtime;
+  const {
+    busy,
+    canvasRef,
+    currentMap,
+    deleteSavedMap,
+    loadMaps,
+    mapName,
+    maps,
+    renameSavedMap,
+    saveMap,
+    selectSavedMap,
+    setMapName,
+    slamRunning,
+    startSlam,
+    status,
+    stopSlam,
+  } = runtime;
 
   return (
     <div className="space-y-5">
@@ -31,16 +48,33 @@ export default function MapPage() {
             <MapIcon className="size-4 text-blue-600" />
             <span className="font-medium text-slate-800">Mapping Workspace</span>
           </div>
-          <div className="flex min-h-[520px] items-center justify-center bg-slate-100 p-6 text-center text-sm text-slate-500">
-            Use this page only for SLAM, scan updates, and saving maps. Route planning and anchor control now live in Monitor.
+          <div className="flex min-h-[520px] items-center justify-center overflow-auto bg-slate-100 p-4">
+            {currentMap ? (
+              <canvas
+                ref={canvasRef}
+                className="max-h-[calc(100vh-280px)] max-w-full rounded-md border border-slate-300 bg-white shadow-sm"
+              />
+            ) : (
+              <div className="text-center text-sm text-slate-500">
+                Waiting for live /map data while SLAM is running.
+              </div>
+            )}
           </div>
-          <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-500">{status}</div>
+          <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
+            {status} This page is only for SLAM, scan updates, and saving maps.
+          </div>
         </section>
 
         <aside className="space-y-4">
-          <SlamPanel busy={busy} startSlam={startSlam} stopSlam={stopSlam} />
+          <SlamPanel busy={busy} slamRunning={slamRunning} startSlam={startSlam} stopSlam={stopSlam} />
           <SaveMapPanel busy={busy} mapName={mapName} status={status} setMapName={setMapName} saveMap={saveMap} />
-          <SavedMapsPanel maps={maps} selectSavedMap={selectSavedMap} />
+          <SavedMapsPanel
+            busy={busy}
+            maps={maps}
+            deleteSavedMap={deleteSavedMap}
+            renameSavedMap={renameSavedMap}
+            selectSavedMap={selectSavedMap}
+          />
         </aside>
       </div>
     </div>
@@ -49,25 +83,28 @@ export default function MapPage() {
 
 interface SlamPanelProps {
   busy: boolean;
+  slamRunning: boolean;
   startSlam: () => Promise<void>;
   stopSlam: () => Promise<void>;
 }
 
-function SlamPanel({ busy, startSlam, stopSlam }: SlamPanelProps) {
+function SlamPanel({ busy, slamRunning, startSlam, stopSlam }: SlamPanelProps) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">SLAM / Scan</h3>
       <div className="flex gap-2">
-        <Button type="button" className="gap-2" disabled={busy} onClick={() => void startSlam()}>
+        <Button type="button" className="gap-2" disabled={busy || slamRunning} onClick={() => void startSlam()}>
           <Radar className="size-4" />
           Start SLAM
         </Button>
-        <Button type="button" variant="outline" className="gap-2" disabled={busy} onClick={() => void stopSlam()}>
+        <Button type="button" variant="outline" className="gap-2" disabled={busy || !slamRunning} onClick={() => void stopSlam()}>
           <Square className="size-4" />
           Stop
         </Button>
       </div>
-      <p className="mt-3 text-sm text-slate-500">Use this mode to scan and update the live map before saving it for Nav2 reuse.</p>
+      <p className="mt-3 text-sm text-slate-500">
+        {slamRunning ? "SLAM is running. Watch the live map update before saving." : "Start SLAM to scan and update the live map."}
+      </p>
     </section>
   );
 }
@@ -96,11 +133,32 @@ function SaveMapPanel({ busy, mapName, status, setMapName, saveMap }: SaveMapPan
 }
 
 interface SavedMapsPanelProps {
+  busy: boolean;
   maps: MapPayload[];
+  deleteSavedMap: (map: MapPayload) => Promise<void>;
+  renameSavedMap: (map: MapPayload, name: string) => Promise<void>;
   selectSavedMap: (map: MapPayload) => Promise<void>;
 }
 
-function SavedMapsPanel({ maps, selectSavedMap }: SavedMapsPanelProps) {
+function SavedMapsPanel({ busy, maps, deleteSavedMap, renameSavedMap, selectSavedMap }: SavedMapsPanelProps) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState("");
+
+  function startEditing(map: MapPayload) {
+    setEditingId(map.id ?? null);
+    setDraftName(map.name ?? "");
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setDraftName("");
+  }
+
+  async function submitRename(map: MapPayload) {
+    await renameSavedMap(map, draftName);
+    cancelEditing();
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">Saved Maps</h3>
@@ -109,21 +167,41 @@ function SavedMapsPanel({ maps, selectSavedMap }: SavedMapsPanelProps) {
           <p className="text-sm text-slate-500">No saved maps.</p>
         ) : (
           maps.map((item) => (
-            <button
-              key={item.id ?? item.name}
-              type="button"
-              className="w-full rounded-md border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
-              onClick={() => void selectSavedMap(item)}
-            >
-              <div className="flex items-center gap-2 font-semibold text-slate-800">
-                <Navigation className="size-4 text-blue-600" />
-                <span className="truncate">{item.name ?? `Map #${item.id}`}</span>
-              </div>
-              <p className="mt-1 text-xs text-slate-400">
-                {item.width}x{item.height}
-              </p>
-              <p className="mt-1 truncate text-xs text-slate-400">{item.yaml_path ?? "No YAML exported"}</p>
-            </button>
+            <div key={item.id ?? item.name} className="rounded-md border border-slate-200 bg-white p-3">
+              <button type="button" className="w-full text-left" onClick={() => void selectSavedMap(item)}>
+                <div className="flex items-center gap-2 font-semibold text-slate-800">
+                  <Navigation className="size-4 text-blue-600" />
+                  <span className="truncate">{item.name ?? `Map #${item.id}`}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  {item.width}x{item.height}
+                </p>
+                <p className="mt-1 truncate text-xs text-slate-400">{item.yaml_path ?? "No YAML exported"}</p>
+              </button>
+
+              {editingId === item.id ? (
+                <div className="mt-3 flex gap-2">
+                  <Input value={draftName} onChange={(event) => setDraftName(event.target.value)} disabled={busy} />
+                  <Button type="button" size="icon" disabled={busy || !draftName.trim()} onClick={() => void submitRename(item)} title="Save name">
+                    <Save className="size-4" />
+                  </Button>
+                  <Button type="button" variant="outline" size="icon" disabled={busy} onClick={cancelEditing} title="Cancel edit">
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-3 flex gap-2">
+                  <Button type="button" variant="outline" size="sm" className="gap-2" disabled={busy || item.id == null} onClick={() => startEditing(item)}>
+                    <Pencil className="size-4" />
+                    Rename
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="gap-2" disabled={busy || item.id == null} onClick={() => void deleteSavedMap(item)}>
+                    <Trash2 className="size-4" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
           ))
         )}
       </div>

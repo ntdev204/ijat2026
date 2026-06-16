@@ -140,6 +140,10 @@ class SaveMapRequest(BaseModel):
     name: str = Field(..., min_length=1)
 
 
+class UpdateMapRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+
+
 class Nav2ConfigRequest(BaseModel):
     local_planner: str = Field(default="CA_NMPC")
     global_planner: str = Field(default="A_STAR")
@@ -271,6 +275,39 @@ def _write_saved_map_files(map_name: str, map_payload: dict) -> tuple[Path, Path
         yaml.safe_dump(yaml_payload, handle, sort_keys=False)
 
     return yaml_path, pgm_path
+
+
+def _saved_map_summary(saved_map: SavedMap) -> dict:
+    return {
+        "id": saved_map.id,
+        "name": saved_map.name,
+        "width": saved_map.width,
+        "height": saved_map.height,
+        "resolution": saved_map.resolution,
+        "origin_x": saved_map.origin_x,
+        "origin_y": saved_map.origin_y,
+        "yaml_path": saved_map.yaml_path,
+        "pgm_path": saved_map.pgm_path,
+        "created_at": saved_map.created_at.isoformat() if saved_map.created_at else None,
+    }
+
+
+def _saved_map_detail(saved_map: SavedMap) -> dict:
+    return {
+        **_saved_map_summary(saved_map),
+        "grid_data": saved_map.grid_data,
+    }
+
+
+def _delete_map_file(path_value: str | None) -> None:
+    if not path_value:
+        return
+    try:
+        path = Path(path_value).expanduser()
+        if path.exists() and path.is_file():
+            path.unlink()
+    except Exception as error:
+        logger.warning("Failed to delete map file %s: %s", path_value, error)
 
 
 def _spin_ros_node() -> None:
@@ -725,21 +762,7 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
 async def list_maps(db: AsyncSession = Depends(get_db)) -> list[dict]:
     result = await db.execute(select(SavedMap).order_by(desc(SavedMap.created_at)))
     maps = result.scalars().all()
-    return [
-        {
-            "id": m.id,
-            "name": m.name,
-            "width": m.width,
-            "height": m.height,
-            "resolution": m.resolution,
-            "origin_x": m.origin_x,
-            "origin_y": m.origin_y,
-            "yaml_path": m.yaml_path,
-            "pgm_path": m.pgm_path,
-            "created_at": m.created_at.isoformat() if m.created_at else None
-        }
-        for m in maps
-    ]
+    return [_saved_map_summary(saved_map) for saved_map in maps]
 
 
 @app.get("/api/map/{map_id}")
@@ -747,19 +770,37 @@ async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     saved_map = await db.get(SavedMap, map_id)
     if saved_map is None:
         raise HTTPException(status_code=404, detail="Saved map not found")
-    return {
-        "id": saved_map.id,
-        "name": saved_map.name,
-        "width": saved_map.width,
-        "height": saved_map.height,
-        "resolution": saved_map.resolution,
-        "origin_x": saved_map.origin_x,
-        "origin_y": saved_map.origin_y,
-        "grid_data": saved_map.grid_data,
-        "yaml_path": saved_map.yaml_path,
-        "pgm_path": saved_map.pgm_path,
-        "created_at": saved_map.created_at.isoformat() if saved_map.created_at else None
-    }
+    return _saved_map_detail(saved_map)
+
+
+@app.patch("/api/map/{map_id}")
+async def update_map(map_id: int, request: UpdateMapRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    saved_map = await db.get(SavedMap, map_id)
+    if saved_map is None:
+        raise HTTPException(status_code=404, detail="Saved map not found")
+    saved_map.name = request.name.strip()
+    await db.commit()
+    await db.refresh(saved_map)
+    return {"success": True, "map": _saved_map_summary(saved_map)}
+
+
+@app.delete("/api/map/{map_id}")
+async def delete_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    saved_map = await db.get(SavedMap, map_id)
+    if saved_map is None:
+        raise HTTPException(status_code=404, detail="Saved map not found")
+    yaml_path = saved_map.yaml_path
+    pgm_path = saved_map.pgm_path
+    await db.delete(saved_map)
+    await db.commit()
+    _delete_map_file(yaml_path)
+    _delete_map_file(pgm_path)
+    return {"success": True, "map_id": map_id}
+
+
+@app.post("/api/map/{map_id}/delete")
+async def delete_map_post(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    return await delete_map(map_id, db)
 
 
 @app.post("/api/dataset/capture")
