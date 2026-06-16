@@ -60,12 +60,22 @@ void CANMPCController::configure(
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".max_solver_time_ms", rclcpp::ParameterValue(50.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".max_path_length", rclcpp::ParameterValue(3.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".default_v_ref", rclcpp::ParameterValue(0.5));
+  nav2_util::declare_parameter_if_not_declared(node, name_ + ".use_native_solver", rclcpp::ParameterValue(false));
+  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_lookahead_index", rclcpp::ParameterValue(3));
+  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_kx", rclcpp::ParameterValue(0.8));
+  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_ky", rclcpp::ParameterValue(0.8));
+  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_omega_gain", rclcpp::ParameterValue(1.2));
 
   node->get_parameter(name_ + ".horizon_steps", horizon_steps_);
   node->get_parameter(name_ + ".model_dt", model_dt_);
   node->get_parameter(name_ + ".max_solver_time_ms", max_solver_time_ms_);
   node->get_parameter(name_ + ".max_path_length", max_path_length_);
   node->get_parameter(name_ + ".default_v_ref", default_v_ref_);
+  node->get_parameter(name_ + ".use_native_solver", use_native_solver_);
+  node->get_parameter(name_ + ".fallback_lookahead_index", fallback_lookahead_index_);
+  node->get_parameter(name_ + ".fallback_kx", fallback_kx_);
+  node->get_parameter(name_ + ".fallback_ky", fallback_ky_);
+  node->get_parameter(name_ + ".fallback_omega_gain", fallback_omega_gain_);
 
   // Declare/Get NMPC hyperparameters
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".beta", rclcpp::ParameterValue(3.0));
@@ -150,8 +160,11 @@ void CANMPCController::configure(
   }
 
   if (!loaded) {
-    RCLCPP_ERROR(logger_, "Failed to initialize CasADi solver wrapper. Tried paths: %s", tried_paths.c_str());
-    throw std::runtime_error("CasADi solver wrapper initialization failed!");
+    if (use_native_solver_) {
+      RCLCPP_ERROR(logger_, "Failed to initialize CasADi solver wrapper. Tried paths: %s", tried_paths.c_str());
+      throw std::runtime_error("CasADi solver wrapper initialization failed!");
+    }
+    RCLCPP_WARN(logger_, "CasADi solver wrapper unavailable. Falling back to geometric tracking mode.");
   }
 
   // Create collision checker
@@ -328,6 +341,53 @@ geometry_msgs::msg::TwistStamped CANMPCController::computeVelocityCommands(
     double rx = pose.pose.position.x;
     double ry = pose.pose.position.y;
     double r_yaw = finite_or(tf2::getYaw(pose.pose.orientation), 0.0);
+
+    if (!use_native_solver_) {
+      const size_t lookahead_index = std::min(
+        ref_traj.size() - 1,
+        static_cast<size_t>(std::max(1, fallback_lookahead_index_)));
+      const auto & target_pose = ref_traj[lookahead_index];
+
+      const double dx_world = target_pose.pose.position.x - rx;
+      const double dy_world = target_pose.pose.position.y - ry;
+      const double cos_yaw = std::cos(r_yaw);
+      const double sin_yaw = std::sin(r_yaw);
+      const double dx_body = cos_yaw * dx_world + sin_yaw * dy_world;
+      const double dy_body = -sin_yaw * dx_world + cos_yaw * dy_world;
+      const double target_yaw = finite_or(tf2::getYaw(target_pose.pose.orientation), r_yaw);
+      const double yaw_error = MecanumModel::normalizeAngle(target_yaw - r_yaw);
+
+      double cmd_vx = std::clamp(fallback_kx_ * dx_body, -max_vx, max_vx);
+      double cmd_vy = std::clamp(fallback_ky_ * dy_body, -max_vy, max_vy);
+      double cmd_omega = std::clamp(fallback_omega_gain_ * yaw_error, -max_omega, max_omega);
+
+      cmd_vel.twist.linear.x = cmd_vx;
+      cmd_vel.twist.linear.y = cmd_vy;
+      cmd_vel.twist.angular.z = cmd_omega;
+
+      last_cmd_vel_.linear.x = cmd_vx;
+      last_cmd_vel_.linear.y = cmd_vy;
+      last_cmd_vel_.angular.z = cmd_omega;
+
+      canmpc_msgs::msg::SolverStats stats_msg;
+      stats_msg.header.stamp = pose.header.stamp;
+      stats_msg.solve_time_ms = 0.0;
+      stats_msg.iter_count = 0;
+      stats_msg.status = "GEOMETRIC_FALLBACK";
+      stats_msg.timeout_flag = false;
+      stats_msg.collision_flag = false;
+      solver_stats_pub_->publish(stats_msg);
+
+      canmpc_msgs::msg::AdaptiveBounds bounds_msg;
+      bounds_msg.header.stamp = pose.header.stamp;
+      bounds_msg.vx_max = max_vx;
+      bounds_msg.vy_max = max_vy;
+      bounds_msg.omega_max = max_omega;
+      bounds_msg.d_safe = (context_copy.d_safe > 0.0 && std::isfinite(context_copy.d_safe)) ? context_copy.d_safe : d_safe_0_;
+      adaptive_bounds_pub_->publish(bounds_msg);
+
+      return cmd_vel;
+    }
 
     // 4. Populate solver input parameters
     SolveInput solver_input;

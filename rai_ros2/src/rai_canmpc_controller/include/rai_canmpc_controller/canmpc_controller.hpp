@@ -69,6 +69,11 @@ protected:
   double max_solver_time_ms_{50.0};
   double max_path_length_{3.0};
   double default_v_ref_{0.5};
+  bool use_native_solver_{false};
+  int fallback_lookahead_index_{3};
+  double fallback_kx_{0.8};
+  double fallback_ky_{0.8};
+  double fallback_omega_gain_{1.2};
 
   // NMPC solver hyperparameters
   double beta_{3.0};
