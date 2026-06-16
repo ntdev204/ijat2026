@@ -3,130 +3,14 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DropdownField } from "@/components/ui/dropdown-field";
-import { fetchWithAuth, resolveApiEndpoint } from "@/lib/api";
+import { useDatasetRuntime } from "@/hooks/useDatasetRuntime";
+import { resolveApiEndpoint } from "@/lib/api";
+import type { RuntimeEnvironment } from "@/types/robot-runtime";
 import { Database, Download, Play, RefreshCw, Square } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-
-interface DatasetRun {
-  id: number;
-  run_name: string;
-  environment: string;
-  controller_id: string;
-  status: string;
-  data_path: string;
-  raw_bag_path?: string;
-  metadata_path?: string;
-  zip_path?: string;
-  duration?: number | null;
-  samples_count?: number | null;
-  start_time?: string | null;
-}
-
-interface DatasetScenario {
-  id: number;
-  name: string;
-  context_type?: string;
-  difficulty?: string;
-  human_mode?: string;
-  description?: string;
-}
-
-interface ActiveDatasetPayload {
-  active: boolean;
-  run: DatasetRun | null;
-  telemetry?: unknown;
-  metadata?: Record<string, unknown> | null;
-}
 
 export default function DatasetPage() {
-  const [active, setActive] = useState<ActiveDatasetPayload>({ active: false, run: null });
-  const [runs, setRuns] = useState<DatasetRun[]>([]);
-  const [scenarios, setScenarios] = useState<DatasetScenario[]>([]);
-  const [scenarioName, setScenarioName] = useState("S1_open_zone");
-  const [controllerId, setControllerId] = useState("CCA_NMPC");
-  const [environment, setEnvironment] = useState<"real" | "sim">("real");
-  const [split, setSplit] = useState("unsplit");
-  const [captureTag, setCaptureTag] = useState("corridor");
-  const [captureClass, setCaptureClass] = useState("person");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const refresh = useCallback(async () => {
-    const [activeRes, runsRes, scenariosRes] = await Promise.all([
-      fetchWithAuth("/api/dataset/active"),
-      fetchWithAuth("/api/dataset/runs"),
-      fetchWithAuth("/api/dataset/scenarios"),
-    ]);
-    setActive((await activeRes.json()) as ActiveDatasetPayload);
-    setRuns((await runsRes.json()) as DatasetRun[]);
-    const nextScenarios = (await scenariosRes.json()) as DatasetScenario[];
-    setScenarios(nextScenarios);
-    if (nextScenarios[0] && scenarioName === "S1_open_zone") {
-      setScenarioName(nextScenarios[0].name);
-    }
-  }, [scenarioName]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void refresh().catch(() => setMessage("Cannot reach rai_web_api dataset endpoints."));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [refresh]);
-
-  async function startDataset() {
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await fetchWithAuth("/api/dataset/start", {
-        method: "POST",
-        body: JSON.stringify({
-          scenario_name: scenarioName,
-          controller_id: controllerId,
-          environment,
-          split,
-        }),
-      });
-      const payload = await response.json();
-      setMessage(`Started ${payload.run_name ?? "dataset run"}.`);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cannot start dataset run.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function stopDataset() {
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await fetchWithAuth("/api/dataset/stop", { method: "POST" });
-      const payload = await response.json();
-      setMessage(`Stopped run #${payload.run_id}. Compression continues in background.`);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cannot stop dataset run.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function captureLabeledSample() {
-    setBusy(true);
-    setMessage("");
-    try {
-      const response = await fetchWithAuth("/api/dataset/capture", {
-        method: "POST",
-        body: JSON.stringify({ tag: captureTag, class_name: captureClass }),
-      });
-      const payload = await response.json();
-      setMessage(`Captured ${payload.filename} with tag=${payload.tag} class=${payload.class_name}.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cannot capture labeled sample.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const dataset = useDatasetRuntime();
+  const { active, busy, form, message, runs, scenarios } = dataset;
 
   return (
     <div className="space-y-6">
@@ -149,37 +33,37 @@ export default function DatasetPage() {
           <label className="block text-sm">
             <span className="text-xs font-medium text-slate-500">Scenario</span>
             <DropdownField
-              value={scenarioName}
-              onValueChange={setScenarioName}
-              options={[scenarioName, ...scenarios.map((item) => item.name)]
+              value={form.scenarioName}
+              onValueChange={dataset.setScenarioName}
+              options={[form.scenarioName, ...scenarios.map((item) => item.name)]
                 .filter((value, index, values) => value && values.indexOf(value) === index)
                 .map((name) => ({ value: name, label: name }))}
             />
           </label>
-          <TextInput label="Controller" value={controllerId} onChange={setControllerId} />
+          <TextInput label="Controller" value={form.controllerId} onChange={dataset.setControllerId} />
           <label className="block text-sm">
             <span className="text-xs font-medium text-slate-500">Environment</span>
             <DropdownField
-              value={environment}
-              onValueChange={(value) => setEnvironment(value as "real" | "sim")}
+              value={form.environment}
+              onValueChange={(value) => dataset.setEnvironment(value as RuntimeEnvironment)}
               options={[
                 { value: "real", label: "real" },
                 { value: "sim", label: "sim" },
               ]}
             />
           </label>
-          <TextInput label="Split" value={split} onChange={setSplit} />
+          <TextInput label="Split" value={form.split} onChange={dataset.setSplit} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" onClick={startDataset} disabled={busy || active.active} className="gap-2">
+          <Button type="button" onClick={() => void dataset.startDataset()} disabled={busy || active.active} className="gap-2">
             <Play className="h-4 w-4" />
             Start
           </Button>
-          <Button type="button" variant="outline" onClick={stopDataset} disabled={busy || !active.active} className="gap-2">
+          <Button type="button" variant="outline" onClick={() => void dataset.stopDataset()} disabled={busy || !active.active} className="gap-2">
             <Square className="h-4 w-4" />
             Stop
           </Button>
-          <Button type="button" variant="outline" onClick={() => void refresh()} disabled={busy} className="gap-2">
+          <Button type="button" variant="outline" onClick={() => void dataset.refresh()} disabled={busy} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
@@ -189,10 +73,10 @@ export default function DatasetPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 text-sm font-semibold text-slate-800">Labeled Capture</div>
         <div className="grid gap-3 md:grid-cols-3">
-          <TextInput label="Tag" value={captureTag} onChange={setCaptureTag} />
-          <TextInput label="Class" value={captureClass} onChange={setCaptureClass} />
+          <TextInput label="Tag" value={form.captureTag} onChange={dataset.setCaptureTag} />
+          <TextInput label="Class" value={form.captureClass} onChange={dataset.setCaptureClass} />
           <div className="flex items-end">
-            <Button type="button" variant="outline" onClick={captureLabeledSample} disabled={busy} className="gap-2">
+            <Button type="button" variant="outline" onClick={() => void dataset.captureLabeledSample()} disabled={busy} className="gap-2">
               <Database className="h-4 w-4" />
               Capture sample
             </Button>
@@ -258,7 +142,13 @@ export default function DatasetPage() {
   );
 }
 
-function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+interface TextInputProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function TextInput({ label, value, onChange }: TextInputProps) {
   return (
     <label className="block text-sm">
       <span className="text-xs font-medium text-slate-500">{label}</span>
@@ -267,7 +157,12 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+interface MetricProps {
+  label: string;
+  value: string;
+}
+
+function Metric({ label, value }: MetricProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="text-xs text-slate-500">{label}</div>

@@ -9,10 +9,11 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from rclpy.action import ActionClient
 
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
 from std_msgs.msg import Bool, Float32, Float32MultiArray, String
+from action_msgs.msg import GoalStatus
 
 try:
     from nav2_msgs.action import NavigateToPose
@@ -104,6 +105,7 @@ class WebBridgeNode(Node):
 
         # Permanent Publishers/Clients
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.voltage_sub = self.create_subscription(
             Float32, '/PowerVoltage', self.voltage_callback, self.reliable_qos
         )
@@ -125,6 +127,10 @@ class WebBridgeNode(Node):
         # Camera frame cache (cho WebRTC)
         self.latest_camera_frame = None
         self.camera_frame_event = threading.Event()
+        self.current_nav_goal_handle = None
+        self.pending_nav_goal = None
+        self.initial_pose = None
+        self.home_pose = None
         self.create_timer(0.1, self.update_map_pose)
 
         self.get_logger().info("WebBridgeNode initialized.")
@@ -450,8 +456,82 @@ class WebBridgeNode(Node):
         msg.angular.z = wz
         self.cmd_vel_pub.publish(msg)
 
+    def publish_initial_pose(self, x: float, y: float, yaw: float, set_home: bool = False):
+        """Đặt vị trí khởi tạo cho AMCL / Nav2."""
+        msg = PoseWithCovarianceStamped()
+        msg.header.frame_id = 'map'
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        qz, qw = self._yaw_to_quaternion(yaw)
+        msg.pose.pose.orientation.z = qz
+        msg.pose.pose.orientation.w = qw
+        msg.pose.covariance[0] = 0.25
+        msg.pose.covariance[7] = 0.25
+        msg.pose.covariance[35] = 0.068
+        self.initial_pose_pub.publish(msg)
+        pose = {"x": round(x, 3), "y": round(y, 3), "yaw": round(yaw, 3)}
+        with self.lock:
+            self.initial_pose = pose
+            if set_home or self.home_pose is None:
+                self.home_pose = dict(pose)
+        self.get_logger().info(f"Published initial pose: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
+        return pose
+
+    def set_home_pose(self, x: float, y: float, yaw: float):
+        pose = {"x": round(x, 3), "y": round(y, 3), "yaw": round(yaw, 3)}
+        with self.lock:
+            self.home_pose = pose
+        self.get_logger().info(f"Updated home pose: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
+        return pose
+
+    def get_anchor_state(self):
+        with self.lock:
+            return {
+                "initial_pose": dict(self.initial_pose) if self.initial_pose else None,
+                "home_pose": dict(self.home_pose) if self.home_pose else None,
+            }
+
     def send_nav_goal(self, x: float, y: float, yaw: float):
-        """Gửi mục tiêu di chuyển Nav2 (NavigateToPose)"""
+        """Gửi mục tiêu di chuyển Nav2 (NavigateToPose)."""
+        return self._dispatch_nav_goal(x, y, yaw)
+
+    def send_nav_route(self, start_pose: dict, goal_pose: dict, start_tolerance: float = 0.25):
+        """Đi đến start trước nếu robot chưa ở start, sau đó mới đi goal."""
+        with self.lock:
+            current_pose = dict(self.telemetry.get("map_pose", {}))
+
+        current_x = float(current_pose.get("x", 0.0) or 0.0)
+        current_y = float(current_pose.get("y", 0.0) or 0.0)
+        start_x = float(start_pose["x"])
+        start_y = float(start_pose["y"])
+        distance_to_start = math.hypot(start_x - current_x, start_y - current_y)
+        self.pending_nav_goal = None
+
+        if distance_to_start <= start_tolerance:
+            self.get_logger().info("Robot is already near start point. Sending goal directly.")
+            return self._dispatch_nav_goal(float(goal_pose["x"]), float(goal_pose["y"]), float(goal_pose.get("yaw", 0.0)))
+
+        self.pending_nav_goal = {
+            "x": float(goal_pose["x"]),
+            "y": float(goal_pose["y"]),
+            "yaw": float(goal_pose.get("yaw", 0.0)),
+        }
+        self.get_logger().info(
+            f"Robot is {distance_to_start:.2f}m from start. Going to start first, then goal."
+        )
+        return self._dispatch_nav_goal(start_x, start_y, float(start_pose.get("yaw", 0.0)))
+
+    def send_home_goal(self):
+        with self.lock:
+            home_pose = dict(self.home_pose) if self.home_pose else None
+        if home_pose is None:
+            self.get_logger().error("Home pose is not set.")
+            return False
+        return self._dispatch_nav_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
+
+    def _dispatch_nav_goal(self, x: float, y: float, yaw: float):
+        """Gửi goal tới action server và giữ callback để chain goal tiếp theo."""
         if not self.nav_to_pose_client:
             self.get_logger().error("Nav2 action client is not initialized!")
             return False
@@ -466,19 +546,62 @@ class WebBridgeNode(Node):
         goal_msg.pose.pose.position.x = x
         goal_msg.pose.pose.position.y = y
 
-        # Yaw to quaternion
-        import math
-        cy = math.cos(yaw * 0.5)
-        sy = math.sin(yaw * 0.5)
-        goal_msg.pose.pose.orientation.w = cy
-        goal_msg.pose.pose.orientation.z = sy
+        qz, qw = self._yaw_to_quaternion(yaw)
+        goal_msg.pose.pose.orientation.z = qz
+        goal_msg.pose.pose.orientation.w = qw
 
         self.get_logger().info(f"Sending Nav2 goal: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
-        self.nav_to_pose_client.send_goal_async(goal_msg)
+        send_future = self.nav_to_pose_client.send_goal_async(goal_msg)
+        send_future.add_done_callback(self._handle_nav_goal_response)
         return True
 
     def cancel_nav_goal(self):
-        """Hủy hành trình di chuyển Nav2 đang chạy"""
-        # (Nếu có action handle, thực hiện cancel)
+        """Hủy hành trình di chuyển Nav2 đang chạy."""
+        self.pending_nav_goal = None
         self.get_logger().info("Cancelling current Nav2 goal...")
-        # Ở cấp độ đơn giản, ta có thể publish một twist trống hoặc reset action client
+        if self.current_nav_goal_handle is not None:
+            self.current_nav_goal_handle.cancel_goal_async()
+            self.current_nav_goal_handle = None
+
+    def _handle_nav_goal_response(self, future):
+        try:
+            goal_handle = future.result()
+        except Exception as error:
+            self.get_logger().error(f"Failed to send Nav2 goal: {error}")
+            self.pending_nav_goal = None
+            return
+
+        if not goal_handle.accepted:
+            self.get_logger().error("Nav2 goal was rejected by action server.")
+            self.pending_nav_goal = None
+            return
+
+        self.current_nav_goal_handle = goal_handle
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._handle_nav_goal_result)
+
+    def _handle_nav_goal_result(self, future):
+        self.current_nav_goal_handle = None
+        try:
+            result = future.result()
+        except Exception as error:
+            self.get_logger().error(f"Nav2 goal result failed: {error}")
+            self.pending_nav_goal = None
+            return
+
+        if result.status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info("Nav2 goal completed successfully.")
+            if self.pending_nav_goal is not None:
+                next_goal = dict(self.pending_nav_goal)
+                self.pending_nav_goal = None
+                self.get_logger().info("Dispatching pending goal after reaching start point.")
+                self._dispatch_nav_goal(next_goal["x"], next_goal["y"], next_goal.get("yaw", 0.0))
+            return
+
+        self.get_logger().warn(f"Nav2 goal finished with status {result.status}.")
+        self.pending_nav_goal = None
+
+    def _yaw_to_quaternion(self, yaw: float):
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        return sy, cy

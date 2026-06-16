@@ -99,6 +99,22 @@ class NavGoalRequest(BaseModel):
     yaw: float = 0.0
 
 
+class PoseRequest(BaseModel):
+    x: float
+    y: float
+    yaw: float = 0.0
+
+
+class InitialPoseRequest(PoseRequest):
+    set_home: bool = True
+
+
+class RoutePlanRequest(BaseModel):
+    start: PoseRequest
+    goal: PoseRequest
+    start_tolerance: float = Field(default=0.25, ge=0.0, le=2.0)
+
+
 class DatasetStartRequest(BaseModel):
     scenario_name: str = Field(default="S1_open_zone")
     controller_id: str = Field(default="CCA_NMPC")
@@ -464,6 +480,23 @@ async def send_nav_goal(goal: NavGoalRequest) -> dict:
     return {"success": True}
 
 
+@app.post("/api/robot/nav/route")
+async def send_nav_route(route: RoutePlanRequest) -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    success = bridge_node.send_nav_route(
+        {"x": route.start.x, "y": route.start.y, "yaw": route.start.yaw},
+        {"x": route.goal.x, "y": route.goal.y, "yaw": route.goal.yaw},
+        route.start_tolerance,
+    )
+    if not success:
+        raise HTTPException(status_code=503, detail="Nav2 action server is not available")
+    return {
+        "success": True,
+        "message": "Route dispatched. Robot will go to start first if needed, then continue to goal.",
+    }
+
+
 @app.post("/api/robot/nav/cancel")
 async def cancel_nav_goal() -> dict:
     if bridge_node is None:
@@ -471,6 +504,45 @@ async def cancel_nav_goal() -> dict:
     bridge_node.cancel_nav_goal()
     bridge_node.publish_cmd_vel(0.0, 0.0, 0.0)
     return {"success": True}
+
+
+@app.get("/api/robot/anchors")
+async def get_robot_anchors() -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    return bridge_node.get_anchor_state()
+
+
+@app.post("/api/robot/initial_pose")
+async def set_initial_pose(request: InitialPoseRequest) -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    pose = bridge_node.publish_initial_pose(request.x, request.y, request.yaw, set_home=request.set_home)
+    anchors = bridge_node.get_anchor_state()
+    return {
+        "success": True,
+        "message": "Initial pose published.",
+        "initial_pose": pose,
+        "home_pose": anchors.get("home_pose"),
+    }
+
+
+@app.post("/api/robot/home")
+async def set_home_pose(request: PoseRequest) -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    pose = bridge_node.set_home_pose(request.x, request.y, request.yaw)
+    return {"success": True, "message": "Home pose updated.", "home_pose": pose}
+
+
+@app.post("/api/robot/nav/home")
+async def send_home_goal() -> dict:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    success = bridge_node.send_home_goal()
+    if not success:
+        raise HTTPException(status_code=503, detail="Home pose is not set or Nav2 action server is not available")
+    return {"success": True, "message": "Going home."}
 
 
 @app.get("/api/nav2/options")
