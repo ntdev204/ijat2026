@@ -47,6 +47,7 @@ private:
   void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
   {
     auto filtered = *scan;
+    filtered.header.stamp = now();
 
     geometry_msgs::msg::TransformStamped transform;
     try {
