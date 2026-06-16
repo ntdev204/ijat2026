@@ -80,6 +80,24 @@ else()
   message(STATUS "Found CasADi library: ${casadi_LIBRARIES}")
 endif()
 
+set(CASADI_RUNTIME_DIRS "")
+foreach(casadi_lib IN LISTS casadi_LIBRARIES)
+  if(TARGET ${casadi_lib})
+    get_target_property(casadi_imported_location ${casadi_lib} IMPORTED_LOCATION_RELEASE)
+    if(NOT casadi_imported_location)
+      get_target_property(casadi_imported_location ${casadi_lib} IMPORTED_LOCATION)
+    endif()
+    if(casadi_imported_location)
+      get_filename_component(casadi_runtime_dir "${casadi_imported_location}" DIRECTORY)
+      list(APPEND CASADI_RUNTIME_DIRS "${casadi_runtime_dir}")
+    endif()
+  elseif(IS_ABSOLUTE "${casadi_lib}")
+    get_filename_component(casadi_runtime_dir "${casadi_lib}" DIRECTORY)
+    list(APPEND CASADI_RUNTIME_DIRS "${casadi_runtime_dir}")
+  endif()
+endforeach()
+list(REMOVE_DUPLICATES CASADI_RUNTIME_DIRS)
+
 # Include directories
 include_directories(
   include
@@ -118,6 +136,12 @@ ament_target_dependencies(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
   ${casadi_LIBRARIES}
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  BUILD_RPATH "${CASADI_RUNTIME_DIRS}"
+  INSTALL_RPATH "${CASADI_RUNTIME_DIRS}"
+  INSTALL_RPATH_USE_LINK_PATH TRUE
 )
 
 # Export the plugin XML
