@@ -444,8 +444,9 @@ class WebBridgeNode(Node):
 
     def update_map_pose(self):
         try:
-            transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            transform = self.tf_buffer.lookup_transform('map', 'base_footprint', rclpy.time.Time())
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as exc:
+            self.get_logger().debug(f"Map pose TF unavailable: {exc}")
             return
 
         q = transform.transform.rotation

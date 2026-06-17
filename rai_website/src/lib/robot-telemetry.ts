@@ -20,6 +20,11 @@ export interface RaiTelemetry {
     right?: number;
   };
   map_info?: RobotUiTelemetry["map_info"];
+  map_pose?: {
+    x?: number;
+    y?: number;
+    yaw?: number;
+  };
   last_update?: number;
 }
 
@@ -81,6 +86,10 @@ export function normalizeRobotTelemetry(payload: RaiTelemetry | null | undefined
   const x = numberOrNull(odom.x);
   const y = numberOrNull(odom.y);
   const yaw = numberOrNull(odom.theta);
+  const mapPose = payload?.map_pose ?? {};
+  const mapX = numberOrNull(mapPose.x);
+  const mapY = numberOrNull(mapPose.y);
+  const mapYaw = numberOrNull(mapPose.yaw);
   const vx = numberOrNull(odom.linear_x) ?? 0;
   const vy = numberOrNull(odom.linear_y) ?? 0;
 
@@ -94,7 +103,7 @@ export function normalizeRobotTelemetry(payload: RaiTelemetry | null | undefined
       pos_y: y,
       yaw,
       speed: Math.sqrt(vx * vx + vy * vy),
-      map_pose: { x, y, yaw },
+      map_pose: { x: mapX ?? x, y: mapY ?? y, yaw: mapYaw ?? yaw },
       navigation_mode: typeof context.navigation_mode === "string" ? context.navigation_mode : null,
       plan: [],
       local_plan: [],

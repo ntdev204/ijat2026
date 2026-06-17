@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import threading
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,17 @@ peer_connections: set[RTCPeerConnection] = set()
 active_dataset_run_id: Optional[int] = None
 nav2_process: Optional[subprocess.Popen] = None
 slam_process: Optional[subprocess.Popen] = None
+
+NAV2_KILL_PATTERNS = (
+    "ros2 launch rai_nav2 rai_nav2.launch.py",
+    "nav2_waypoint_cycle",
+    "__node:=nav2_container",
+)
+SLAM_KILL_PATTERNS = (
+    "ros2 launch rai_slam_toolbox online_async_launch.py",
+    "async_slam_toolbox_node",
+    "__node:=slam_toolbox",
+)
 
 NAV2_LOCAL_PLANNER_OPTIONS = [
     {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
@@ -175,10 +187,12 @@ def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_para
 
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
     planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
+    amcl_params = config.setdefault("amcl", {}).setdefault("ros__parameters", {})
     controller_params["goal_checker_plugins"] = ["general_goal_checker"]
     controller_params["current_goal_checker"] = "general_goal_checker"
     controller_params["selected_local_planner"] = local_planner
     planner_params["selected_global_planner"] = global_planner
+    amcl_params["set_initial_pose"] = False
 
     temp_dir = Path(tempfile.mkdtemp(prefix="rai_web_api_nav2_"))
     params_path = temp_dir / "nav2_runtime.yaml"
@@ -232,6 +246,68 @@ def _stop_process(process: Optional[subprocess.Popen]) -> dict:
             process.kill()
         process.wait(timeout=2.0)
     return {"status": "stopped", "pid": process.pid}
+
+
+def _find_pids_by_patterns(patterns: tuple[str, ...]) -> set[int]:
+    if os.name == "nt":
+        return set()
+
+    matched: set[int] = set()
+    for pattern in patterns:
+        result = subprocess.run(
+            ["pgrep", "-f", pattern],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode not in (0, 1):
+            continue
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                pid = int(line)
+            except ValueError:
+                continue
+            if pid != os.getpid():
+                matched.add(pid)
+    return matched
+
+
+def _kill_matching_processes(patterns: tuple[str, ...]) -> list[int]:
+    pids = _find_pids_by_patterns(patterns)
+    if not pids:
+        return []
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        remaining = [pid for pid in pids if Path(f"/proc/{pid}").exists()]
+        if not remaining:
+            return sorted(pids)
+        time.sleep(0.1)
+
+    for pid in pids:
+        if Path(f"/proc/{pid}").exists():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    return sorted(pids)
+
+
+def _stop_stack_process(process: Optional[subprocess.Popen], patterns: tuple[str, ...]) -> dict:
+    result = _stop_process(process)
+    killed_pids = _kill_matching_processes(patterns)
+    if killed_pids:
+        result["killed_pids"] = killed_pids
+    return result
 
 
 def _safe_map_name(name: str) -> str:
@@ -358,8 +434,8 @@ async def shutdown() -> None:
         await asyncio.gather(*close_tasks, return_exceptions=True)
     peer_connections.clear()
 
-    _stop_process(nav2_process)
-    _stop_process(slam_process)
+    _stop_stack_process(nav2_process, NAV2_KILL_PATTERNS)
+    _stop_stack_process(slam_process, SLAM_KILL_PATTERNS)
     nav2_process = None
     slam_process = None
 
@@ -689,7 +765,7 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
 @app.post("/api/nav2/stop")
 async def stop_nav2_stack() -> dict:
     global nav2_process
-    result = _stop_process(nav2_process)
+    result = _stop_stack_process(nav2_process, NAV2_KILL_PATTERNS)
     nav2_process = None
     if bridge_node is not None:
         with bridge_node.lock:
@@ -713,7 +789,7 @@ async def start_slam() -> dict:
 @app.post("/api/robot/slam/stop")
 async def stop_slam() -> dict:
     global slam_process
-    result = _stop_process(slam_process)
+    result = _stop_stack_process(slam_process, SLAM_KILL_PATTERNS)
     slam_process = None
     if bridge_node is not None:
         with bridge_node.lock:

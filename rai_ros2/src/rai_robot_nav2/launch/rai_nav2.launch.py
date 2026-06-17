@@ -250,6 +250,7 @@ def _write_runtime_params(context, *_args, **_kwargs):
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
     planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
     bt_params = config.setdefault("bt_navigator", {}).setdefault("ros__parameters", {})
+    amcl_params = config.setdefault("amcl", {}).setdefault("ros__parameters", {})
 
     nav2_bt_dir = get_package_share_directory("nav2_bt_navigator")
     bt_tree_dir = os.path.join(nav2_bt_dir, "behavior_trees")
@@ -283,6 +284,7 @@ def _write_runtime_params(context, *_args, **_kwargs):
     planner_params["planner_plugins"] = ["GridBased"]
     planner_params["GridBased"] = global_preset
     planner_params["selected_global_planner"] = global_planner
+    amcl_params["set_initial_pose"] = False
     bt_params["plugin_lib_names"] = BT_PLUGIN_LIB_NAMES
     bt_params["default_nav_to_pose_bt_xml"] = runtime_nav_to_pose_bt
     bt_params["default_nav_through_poses_bt_xml"] = runtime_nav_through_poses_bt
