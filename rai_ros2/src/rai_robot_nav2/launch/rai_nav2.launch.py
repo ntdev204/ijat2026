@@ -236,8 +236,15 @@ def _write_runtime_bt_tree(source_path, destination_path):
 
 def _write_runtime_params(context, *_args, **_kwargs):
     params_path = context.perform_substitution(LaunchConfiguration("params"))
+    map_path = context.perform_substitution(LaunchConfiguration("map"))
+    slam = context.perform_substitution(LaunchConfiguration("slam")).lower() in ("true", "1", "yes")
     local_planner = context.perform_substitution(LaunchConfiguration("local_planner")).upper()
     global_planner = context.perform_substitution(LaunchConfiguration("global_planner")).upper()
+
+    if not os.path.exists(params_path):
+        raise FileNotFoundError(f"Nav2 params file not found: {params_path}")
+    if not slam and not os.path.exists(map_path):
+        raise FileNotFoundError(f"Nav2 map file not found: {map_path}")
 
     with open(params_path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
@@ -251,6 +258,16 @@ def _write_runtime_params(context, *_args, **_kwargs):
     planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
     bt_params = config.setdefault("bt_navigator", {}).setdefault("ros__parameters", {})
     amcl_params = config.setdefault("amcl", {}).setdefault("ros__parameters", {})
+    local_costmap_params = (
+        config.setdefault("local_costmap", {})
+        .setdefault("local_costmap", {})
+        .setdefault("ros__parameters", {})
+    )
+    global_costmap_params = (
+        config.setdefault("global_costmap", {})
+        .setdefault("global_costmap", {})
+        .setdefault("ros__parameters", {})
+    )
 
     nav2_bt_dir = get_package_share_directory("nav2_bt_navigator")
     bt_tree_dir = os.path.join(nav2_bt_dir, "behavior_trees")
@@ -284,7 +301,10 @@ def _write_runtime_params(context, *_args, **_kwargs):
     planner_params["planner_plugins"] = ["GridBased"]
     planner_params["GridBased"] = global_preset
     planner_params["selected_global_planner"] = global_planner
-    amcl_params["set_initial_pose"] = False
+    amcl_params.setdefault("set_initial_pose", True)
+    amcl_params["transform_tolerance"] = 0.3
+    local_costmap_params["transform_tolerance"] = 0.3
+    global_costmap_params["transform_tolerance"] = 0.3
     bt_params["plugin_lib_names"] = BT_PLUGIN_LIB_NAMES
     bt_params["default_nav_to_pose_bt_xml"] = runtime_nav_to_pose_bt
     bt_params["default_nav_through_poses_bt_xml"] = runtime_nav_through_poses_bt
@@ -300,6 +320,7 @@ def _write_runtime_params(context, *_args, **_kwargs):
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")
     slam = LaunchConfiguration("slam", default="False")
+    use_composition = LaunchConfiguration("use_composition", default="False")
     runtime_params = LaunchConfiguration("runtime_params")
 
     rai_nav_dir = get_package_share_directory("rai_nav2")
@@ -340,6 +361,11 @@ def generate_launch_description():
             default_value="False",
             description="Run SLAM if true, localization with map if false",
         ),
+        DeclareLaunchArgument(
+            "use_composition",
+            default_value="False",
+            description="Use Nav2 component composition if true",
+        ),
         OpaqueFunction(function=_write_runtime_params),
         Node(
             name="waypoint_cycle",
@@ -352,7 +378,7 @@ def generate_launch_description():
                 "map": map_file,
                 "slam": slam,
                 "use_sim_time": use_sim_time,
-                "use_composition": "True",
+                "use_composition": use_composition,
                 "params_file": runtime_params,
             }.items(),
         ),

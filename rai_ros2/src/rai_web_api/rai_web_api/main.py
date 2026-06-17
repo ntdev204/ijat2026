@@ -188,11 +188,23 @@ def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_para
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
     planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
     amcl_params = config.setdefault("amcl", {}).setdefault("ros__parameters", {})
+    local_costmap_params = (
+        config.setdefault("local_costmap", {})
+        .setdefault("local_costmap", {})
+        .setdefault("ros__parameters", {})
+    )
+    global_costmap_params = (
+        config.setdefault("global_costmap", {})
+        .setdefault("global_costmap", {})
+        .setdefault("ros__parameters", {})
+    )
     controller_params["goal_checker_plugins"] = ["general_goal_checker"]
     controller_params["current_goal_checker"] = "general_goal_checker"
     controller_params["selected_local_planner"] = local_planner
     planner_params["selected_global_planner"] = global_planner
-    amcl_params["set_initial_pose"] = False
+    amcl_params["transform_tolerance"] = 0.3
+    local_costmap_params["transform_tolerance"] = 0.3
+    global_costmap_params["transform_tolerance"] = 0.3
 
     temp_dir = Path(tempfile.mkdtemp(prefix="rai_web_api_nav2_"))
     params_path = temp_dir / "nav2_runtime.yaml"
@@ -205,7 +217,8 @@ def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, 
     return (
         "ros2 launch rai_nav2 rai_nav2.launch.py "
         f"map:={map_path} params:={params_path} "
-        f"local_planner:={local_planner} global_planner:={global_planner}"
+        f"local_planner:={local_planner} global_planner:={global_planner} "
+        "use_composition:=False"
     )
 
 

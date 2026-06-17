@@ -52,7 +52,8 @@ export default function MapPage() {
             {currentMap ? (
               <canvas
                 ref={canvasRef}
-                className="h-[min(54vh,560px)] w-auto max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated]"
+                style={{ aspectRatio: `${currentMap.width} / ${currentMap.height}` }}
+                className="block h-auto w-full max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated]"
               />
             ) : (
               <div className="text-center text-sm text-slate-500">

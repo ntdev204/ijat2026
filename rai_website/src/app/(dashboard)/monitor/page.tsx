@@ -150,7 +150,8 @@ function RealtimeMapPanel({ mapCanvasRef, mapData, nav2Running, paths, selection
           <canvas
             ref={mapCanvasRef}
             onClick={onMapClick}
-            className={`h-[min(48vh,500px)] w-auto max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated] ${selectionMode ? "cursor-crosshair" : "cursor-default"}`}
+            style={{ aspectRatio: `${mapData.width} / ${mapData.height}` }}
+            className={`block h-auto w-full max-w-full rounded-md border border-slate-300 bg-white shadow-sm [image-rendering:pixelated] ${selectionMode ? "cursor-crosshair" : "cursor-default"}`}
           />
         ) : (
           <div className="text-sm text-slate-400">Waiting for /api/ws/map.</div>
