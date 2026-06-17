@@ -61,24 +61,14 @@ void CCANMPCController::configure(
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".max_solver_time_ms", rclcpp::ParameterValue(50.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".max_path_length", rclcpp::ParameterValue(3.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".default_v_ref", rclcpp::ParameterValue(0.5));
-  nav2_util::declare_parameter_if_not_declared(node, name_ + ".use_native_solver", rclcpp::ParameterValue(false));
-  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_lookahead_index", rclcpp::ParameterValue(3));
-  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_kx", rclcpp::ParameterValue(0.8));
-  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_ky", rclcpp::ParameterValue(0.8));
-  nav2_util::declare_parameter_if_not_declared(node, name_ + ".fallback_omega_gain", rclcpp::ParameterValue(1.2));
 
   node->get_parameter(name_ + ".horizon_steps", horizon_steps_);
   node->get_parameter(name_ + ".model_dt", model_dt_);
   node->get_parameter(name_ + ".max_solver_time_ms", max_solver_time_ms_);
   node->get_parameter(name_ + ".max_path_length", max_path_length_);
   node->get_parameter(name_ + ".default_v_ref", default_v_ref_);
-  node->get_parameter(name_ + ".use_native_solver", use_native_solver_);
-  node->get_parameter(name_ + ".fallback_lookahead_index", fallback_lookahead_index_);
-  node->get_parameter(name_ + ".fallback_kx", fallback_kx_);
-  node->get_parameter(name_ + ".fallback_ky", fallback_ky_);
-  node->get_parameter(name_ + ".fallback_omega_gain", fallback_omega_gain_);
 
-  // Declare/Get NMPC hyperparameters
+  // Declare/Get CCA-NMPC hyperparameters
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".beta", rclcpp::ParameterValue(3.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".d0", rclcpp::ParameterValue(1.5));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".d_safe_0", rclcpp::ParameterValue(0.5));
@@ -95,7 +85,7 @@ void CCANMPCController::configure(
   node->get_parameter(name_ + ".v_y_max_min", v_y_max_min_);
   node->get_parameter(name_ + ".omega_max_min", omega_max_min_);
 
-  // Declare/Get NMPC cost weights
+  // Declare/Get CCA-NMPC cost weights
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".q_x", rclcpp::ParameterValue(10.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".q_y", rclcpp::ParameterValue(10.0));
   nav2_util::declare_parameter_if_not_declared(node, name_ + ".q_theta", rclcpp::ParameterValue(5.0));
@@ -172,11 +162,8 @@ void CCANMPCController::configure(
   }
 
   if (!loaded) {
-    if (use_native_solver_) {
-      RCLCPP_ERROR(logger_, "Failed to initialize CasADi solver wrapper. Tried paths: %s", tried_paths.c_str());
-      throw std::runtime_error("CasADi solver wrapper initialization failed!");
-    }
-    RCLCPP_WARN(logger_, "CasADi solver wrapper unavailable. Falling back to geometric tracking mode.");
+    RCLCPP_ERROR(logger_, "Failed to initialize CasADi solver wrapper. Tried paths: %s", tried_paths.c_str());
+    throw std::runtime_error("CasADi solver wrapper initialization failed!");
   }
 
   // Create collision checker
@@ -354,53 +341,6 @@ geometry_msgs::msg::TwistStamped CCANMPCController::computeVelocityCommands(
     double ry = pose.pose.position.y;
     double r_yaw = finite_or(tf2::getYaw(pose.pose.orientation), 0.0);
 
-    if (!use_native_solver_) {
-      const size_t lookahead_index = std::min(
-        ref_traj.size() - 1,
-        static_cast<size_t>(std::max(1, fallback_lookahead_index_)));
-      const auto & target_pose = ref_traj[lookahead_index];
-
-      const double dx_world = target_pose.pose.position.x - rx;
-      const double dy_world = target_pose.pose.position.y - ry;
-      const double cos_yaw = std::cos(r_yaw);
-      const double sin_yaw = std::sin(r_yaw);
-      const double dx_body = cos_yaw * dx_world + sin_yaw * dy_world;
-      const double dy_body = -sin_yaw * dx_world + cos_yaw * dy_world;
-      const double target_yaw = finite_or(tf2::getYaw(target_pose.pose.orientation), r_yaw);
-      const double yaw_error = MecanumModel::normalizeAngle(target_yaw - r_yaw);
-
-      double cmd_vx = std::clamp(fallback_kx_ * dx_body, -max_vx, max_vx);
-      double cmd_vy = std::clamp(fallback_ky_ * dy_body, -max_vy, max_vy);
-      double cmd_omega = std::clamp(fallback_omega_gain_ * yaw_error, -max_omega, max_omega);
-
-      cmd_vel.twist.linear.x = cmd_vx;
-      cmd_vel.twist.linear.y = cmd_vy;
-      cmd_vel.twist.angular.z = cmd_omega;
-
-      last_cmd_vel_.linear.x = cmd_vx;
-      last_cmd_vel_.linear.y = cmd_vy;
-      last_cmd_vel_.angular.z = cmd_omega;
-
-      ccanmpc_msgs::msg::SolverStats stats_msg;
-      stats_msg.header.stamp = pose.header.stamp;
-      stats_msg.solve_time_ms = 0.0;
-      stats_msg.iter_count = 0;
-      stats_msg.status = "GEOMETRIC_FALLBACK";
-      stats_msg.timeout_flag = false;
-      stats_msg.collision_flag = false;
-      solver_stats_pub_->publish(stats_msg);
-
-      ccanmpc_msgs::msg::AdaptiveBounds bounds_msg;
-      bounds_msg.header.stamp = pose.header.stamp;
-      bounds_msg.vx_max = max_vx;
-      bounds_msg.vy_max = max_vy;
-      bounds_msg.omega_max = max_omega;
-      bounds_msg.d_safe = (context_copy.d_safe > 0.0 && std::isfinite(context_copy.d_safe)) ? context_copy.d_safe : d_safe_0_;
-      adaptive_bounds_pub_->publish(bounds_msg);
-
-      return cmd_vel;
-    }
-
     // 4. Populate solver input parameters
     SolveInput solver_input;
     solver_input.x_init = {rx, ry, r_yaw};
@@ -457,19 +397,22 @@ geometry_msgs::msg::TwistStamped CCANMPCController::computeVelocityCommands(
         solver_input.human_data[4 * j + 2] = sorted_humans[j].state.velocity.linear.x;
         solver_input.human_data[4 * j + 3] = sorted_humans[j].state.velocity.linear.y;
       } else {
-        solver_input.human_data[4 * j] = 999.0;
-        solver_input.human_data[4 * j + 1] = 999.0;
+        solver_input.human_data[4 * j] = rx + 50.0;
+        solver_input.human_data[4 * j + 1] = ry + 50.0;
         solver_input.human_data[4 * j + 2] = 0.0;
         solver_input.human_data[4 * j + 3] = 0.0;
       }
     }
 
     // Populate scalar solver hyperparameters
+    const double d_safe_nominal = (context_copy.d_safe > 0.0 && std::isfinite(context_copy.d_safe)) ?
+      context_copy.d_safe : d_safe_0_;
+
     solver_input.params = {
       model_dt_,
       beta_,
       d0_,
-      d_safe_0_,
+      d_safe_nominal,
       d_safe_max_,
       v_ref,
       max_vx,
@@ -546,48 +489,13 @@ geometry_msgs::msg::TwistStamped CCANMPCController::computeVelocityCommands(
     double cmd_vy = 0.0;
     double cmd_omega = 0.0;
 
-    bool fallback_triggered = !solver_output.success || size_invalid || nan_detected || collision_detected || timeout_detected;
+    bool solver_rejected = !solver_output.success || size_invalid || nan_detected || collision_detected || timeout_detected;
 
-    if (fallback_triggered) {
-      RCLCPP_WARN(logger_, "MPC Solver failure or safety violation detected! Status: %s, SizeInvalid: %d, NaN: %d, Collision: %d, Timeout: %d. Activating safety fallback.",
+    if (solver_rejected) {
+      RCLCPP_WARN(logger_, "MPC solver output rejected. Status: %s, SizeInvalid: %d, NaN: %d, Collision: %d, Timeout: %d. Returning zero command.",
                    solver_output.status.c_str(), size_invalid, nan_detected, collision_detected, timeout_detected);
 
       solver_wrapper_->resetCache();
-
-      double decay_factor = 0.8;
-      double candidate_vx = last_cmd_vel_.linear.x * decay_factor;
-      double candidate_vy = last_cmd_vel_.linear.y * decay_factor;
-      double candidate_omega = last_cmd_vel_.angular.z * decay_factor;
-
-      bool candidate_safe = true;
-      if (collision_checker_) {
-        double dx = (candidate_vx * std::cos(r_yaw) - candidate_vy * std::sin(r_yaw)) * model_dt_;
-        double dy = (candidate_vx * std::sin(r_yaw) + candidate_vy * std::cos(r_yaw)) * model_dt_;
-        double dyaw = candidate_omega * model_dt_;
-
-        double next_x = rx + dx;
-        double next_y = ry + dy;
-        double next_yaw = MecanumModel::normalizeAngle(r_yaw + dyaw);
-
-        auto footprint = costmap_ros_->getRobotFootprint();
-        double cost = collision_checker_->footprintCostAtPose(next_x, next_y, next_yaw, footprint);
-        if (cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-          candidate_safe = false;
-          RCLCPP_WARN(logger_, "Decayed previous command candidate is unsafe! Footprint cost: %.1f", cost);
-        }
-      }
-
-      if (candidate_safe && (std::abs(candidate_vx) > 0.01 || std::abs(candidate_vy) > 0.01 || std::abs(candidate_omega) > 0.01)) {
-        RCLCPP_INFO(logger_, "Executing safe decayed previous command: vx=%.3f, vy=%.3f, omega=%.3f", candidate_vx, candidate_vy, candidate_omega);
-        cmd_vx = candidate_vx;
-        cmd_vy = candidate_vy;
-        cmd_omega = candidate_omega;
-      } else {
-        RCLCPP_WARN(logger_, "Executing zero-velocity stop fallback.");
-        cmd_vx = 0.0;
-        cmd_vy = 0.0;
-        cmd_omega = 0.0;
-      }
     } else {
       cmd_vx = solver_output.u_opt[0];
       cmd_vy = solver_output.u_opt[1];
@@ -606,7 +514,7 @@ geometry_msgs::msg::TwistStamped CCANMPCController::computeVelocityCommands(
     last_cmd_vel_.linear.y = cmd_vy;
     last_cmd_vel_.angular.z = cmd_omega;
 
-    if (solver_output.success && !fallback_triggered) {
+    if (solver_output.success && !solver_rejected) {
       nav_msgs::msg::Path pred_path_msg;
       pred_path_msg.header.frame_id = global_frame;
       pred_path_msg.header.stamp = pose.header.stamp;
@@ -643,7 +551,7 @@ geometry_msgs::msg::TwistStamped CCANMPCController::computeVelocityCommands(
     bounds_msg.vx_max = max_vx;
     bounds_msg.vy_max = max_vy;
     bounds_msg.omega_max = max_omega;
-    bounds_msg.d_safe = (context_copy.d_safe > 0.0 && std::isfinite(context_copy.d_safe)) ? context_copy.d_safe : d_safe_0_;
+    bounds_msg.d_safe = d_safe_nominal;
     adaptive_bounds_pub_->publish(bounds_msg);
 
     return cmd_vel;

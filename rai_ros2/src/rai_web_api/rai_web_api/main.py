@@ -53,7 +53,6 @@ slam_process: Optional[subprocess.Popen] = None
 
 NAV2_LOCAL_PLANNER_OPTIONS = [
     {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
-    {"id": "NMPC", "label": "NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
     {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
     {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
     {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
@@ -63,8 +62,12 @@ NAV2_GLOBAL_PLANNER_OPTIONS = [
     {"id": "DIJKSTRA", "label": "Dijkstra", "plugin": "nav2_navfn_planner/NavfnPlanner"},
     {"id": "HYBRID_ASTAR", "label": "Hybrid A*", "plugin": "nav2_smac_planner/SmacPlannerHybrid"},
 ]
+default_local_planner = os.getenv("RAI_NAV2_LOCAL_PLANNER", "CCA_NMPC").upper()
+if default_local_planner not in {item["id"] for item in NAV2_LOCAL_PLANNER_OPTIONS}:
+    default_local_planner = "CCA_NMPC"
+
 nav2_runtime_config = {
-    "local_planner": os.getenv("RAI_NAV2_LOCAL_PLANNER", "CCA_NMPC").upper(),
+    "local_planner": default_local_planner,
     "global_planner": os.getenv("RAI_NAV2_GLOBAL_PLANNER", "A_STAR").upper(),
     "map_path": os.getenv("RAI_NAV2_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
     "selected_map_id": None,

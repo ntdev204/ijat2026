@@ -8,7 +8,7 @@ def main():
     N = 20          # prediction steps
     N_humans = 3    # support up to 3 humans
 
-    print(f"Generating NMPC solver C code with N={N}, N_humans={N_humans}...")
+    print(f"Generating CCA-NMPC solver C code with N={N}, N_humans={N_humans}...")
 
     # Decision variables
     # 1. States: X = [x_0, y_0, theta_0, ..., x_N, y_N, theta_N] (size 3 * (N + 1))

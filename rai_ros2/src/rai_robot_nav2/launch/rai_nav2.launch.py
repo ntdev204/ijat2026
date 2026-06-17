@@ -13,7 +13,6 @@ from launch_ros.actions import Node
 LOCAL_PLANNER_PRESETS = {
     "CCA_NMPC": {
         "plugin": "cca_nmpc_controller/CCANMPCController",
-        "use_native_solver": True,
         "horizon_steps": 20,
         "model_dt": 0.05,
         "max_solver_time_ms": 50.0,
@@ -36,33 +35,6 @@ LOCAL_PLANNER_PRESETS = {
         "rd_vy": 1.0,
         "rd_omega": 0.5,
         "q_active_factor": 0.1,
-        "w_slack": 100000.0,
-    },
-    "NMPC": {
-        "plugin": "cca_nmpc_controller/CCANMPCController",
-        "use_native_solver": True,
-        "horizon_steps": 20,
-        "model_dt": 0.05,
-        "max_solver_time_ms": 50.0,
-        "max_path_length": 3.0,
-        "default_v_ref": 0.45,
-        "beta": 3.0,
-        "d0": 1.5,
-        "d_safe_0": 0.5,
-        "d_safe_max": 1.0,
-        "v_max_min": 0.1,
-        "v_y_max_min": 0.1,
-        "omega_max_min": 0.2,
-        "q_x": 10.0,
-        "q_y": 10.0,
-        "q_theta": 5.0,
-        "r_vx": 0.1,
-        "r_vy": 0.1,
-        "r_omega": 0.05,
-        "rd_vx": 1.0,
-        "rd_vy": 1.0,
-        "rd_omega": 0.5,
-        "q_active_factor": 0.0,
         "w_slack": 100000.0,
     },
     "MPPI": {
@@ -257,7 +229,9 @@ def _write_runtime_params(context, *_args, **_kwargs):
     with open(params_path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
 
-    local_preset = LOCAL_PLANNER_PRESETS.get(local_planner, LOCAL_PLANNER_PRESETS["CCA_NMPC"])
+    if local_planner not in LOCAL_PLANNER_PRESETS:
+        local_planner = "CCA_NMPC"
+    local_preset = LOCAL_PLANNER_PRESETS[local_planner]
     global_preset = GLOBAL_PLANNER_PRESETS.get(global_planner, GLOBAL_PLANNER_PRESETS["A_STAR"])
 
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
@@ -324,7 +298,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "local_planner",
             default_value="CCA_NMPC",
-            description="CCA_NMPC | NMPC | MPPI | DWB | DWA",
+            description="CCA_NMPC | MPPI | DWB | DWA",
         ),
         DeclareLaunchArgument(
             "global_planner",

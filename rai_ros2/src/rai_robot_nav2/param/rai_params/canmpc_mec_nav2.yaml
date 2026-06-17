@@ -95,14 +95,13 @@ controller_server:
 
     FollowPath:
       plugin: "cca_nmpc_controller/CCANMPCController"
-      use_native_solver: True
       horizon_steps: 20
       model_dt: 0.05
       max_solver_time_ms: 50.0
       max_path_length: 3.0
       default_v_ref: 0.5
       
-      # NMPC parameters
+      # CCA-NMPC parameters
       beta: 3.0
       d0: 1.5
       d_safe_0: 0.5
