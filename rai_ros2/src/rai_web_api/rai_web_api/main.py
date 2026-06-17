@@ -310,6 +310,30 @@ def _stop_stack_process(process: Optional[subprocess.Popen], patterns: tuple[str
     return result
 
 
+def _publish_anchor_pose_after_delay(delay_sec: float = 3.0, attempts: int = 5, interval_sec: float = 0.5) -> None:
+    if bridge_node is None:
+        return
+
+    def _worker() -> None:
+        time.sleep(delay_sec)
+        for _ in range(attempts):
+            if bridge_node is None:
+                return
+            anchors = bridge_node.get_anchor_state()
+            initial_pose = anchors.get("initial_pose")
+            if initial_pose:
+                bridge_node.publish_initial_pose(
+                    float(initial_pose["x"]),
+                    float(initial_pose["y"]),
+                    float(initial_pose["yaw"]),
+                    set_home=anchors.get("home_pose") is None,
+                )
+                return
+            time.sleep(interval_sec)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def _safe_map_name(name: str) -> str:
     cleaned = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in name.strip())
     return cleaned.strip("_") or datetime.utcnow().strftime("RAI_%Y%m%d_%H%M%S")
@@ -751,13 +775,18 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
     )
     nav2_process = _start_process(command, env=_ros_runtime_env())
     nav2_runtime_config["last_command"] = command
+    anchor = None
     if bridge_node is not None:
         with bridge_node.lock:
             bridge_node.telemetry["context"]["navigation_mode"] = "nav2"
+        anchor = bridge_node.get_anchor_state().get("initial_pose")
+        if anchor is not None:
+            _publish_anchor_pose_after_delay()
     return {
         "success": True,
         "pid": nav2_process.pid,
         "command": command,
+        "initial_pose": anchor,
         **(await nav2_config()),
     }
 
@@ -780,10 +809,18 @@ async def start_slam() -> dict:
         return {"success": True, "message": "SLAM is already running"}
     command = "ros2 launch rai_slam_toolbox online_async_launch.py"
     slam_process = _start_process(command, env=_ros_runtime_env())
+    anchor = None
     if bridge_node is not None:
         with bridge_node.lock:
             bridge_node.telemetry["context"]["navigation_mode"] = "slam"
-    return {"success": True, "message": "SLAM launch started", "pid": slam_process.pid, "command": command}
+        anchor = bridge_node.capture_current_pose_as_anchor(prefer_map=False, set_home=True)
+    return {
+        "success": True,
+        "message": "SLAM launch started",
+        "pid": slam_process.pid,
+        "command": command,
+        "initial_pose": anchor,
+    }
 
 
 @app.post("/api/robot/slam/stop")

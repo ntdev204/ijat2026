@@ -132,6 +132,7 @@ class WebBridgeNode(Node):
         self.pending_nav_goal = None
         self.initial_pose = None
         self.home_pose = None
+        self.map_pose_available = False
         self.create_timer(0.1, self.update_map_pose)
 
         self.get_logger().info("WebBridgeNode initialized.")
@@ -454,6 +455,7 @@ class WebBridgeNode(Node):
         cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
         yaw = round(math.atan2(siny_cosp, cosy_cosp), 3)
         with self.lock:
+            self.map_pose_available = True
             self.telemetry["map_pose"] = {
                 "x": round(transform.transform.translation.x, 3),
                 "y": round(transform.transform.translation.y, 3),
@@ -499,6 +501,31 @@ class WebBridgeNode(Node):
             self.home_pose = pose
         self.get_logger().info(f"Updated home pose: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
         return pose
+
+    def capture_current_pose_as_anchor(self, prefer_map: bool = True, set_home: bool = True):
+        with self.lock:
+            pose = None
+            if prefer_map and self.map_pose_available:
+                pose = dict(self.telemetry["map_pose"])
+            elif self.telemetry["last_update"] > 0.0:
+                pose = {
+                    "x": self.telemetry["odom"]["x"],
+                    "y": self.telemetry["odom"]["y"],
+                    "yaw": self.telemetry["odom"]["theta"],
+                }
+
+            if pose is None:
+                return None
+
+            anchor = {
+                "x": round(float(pose["x"]), 3),
+                "y": round(float(pose["y"]), 3),
+                "yaw": round(float(pose["yaw"]), 3),
+            }
+            self.initial_pose = dict(anchor)
+            if set_home or self.home_pose is None:
+                self.home_pose = dict(anchor)
+            return anchor
 
     def get_anchor_state(self):
         with self.lock:
