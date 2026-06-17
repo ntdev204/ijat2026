@@ -780,6 +780,8 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
         with bridge_node.lock:
             bridge_node.telemetry["context"]["navigation_mode"] = "nav2"
         anchor = bridge_node.get_anchor_state().get("initial_pose")
+        if anchor is None:
+            anchor = bridge_node.capture_current_pose_as_anchor(prefer_map=False, set_home=False)
         if anchor is not None:
             _publish_anchor_pose_after_delay()
     return {
