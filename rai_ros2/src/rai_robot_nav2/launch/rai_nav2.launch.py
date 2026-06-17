@@ -221,6 +221,19 @@ BT_PLUGIN_LIB_NAMES = [
 ]
 
 
+def _write_runtime_bt_tree(source_path, destination_path):
+    with open(source_path, "r", encoding="utf-8") as handle:
+        tree_xml = handle.read()
+
+    tree_xml = tree_xml.replace(
+        '<FollowPath path="{path}" controller_id="FollowPath"/>',
+        '<FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"/>',
+    )
+
+    with open(destination_path, "w", encoding="utf-8") as handle:
+        handle.write(tree_xml)
+
+
 def _write_runtime_params(context, *_args, **_kwargs):
     params_path = context.perform_substitution(LaunchConfiguration("params"))
     local_planner = context.perform_substitution(LaunchConfiguration("local_planner")).upper()
@@ -240,6 +253,23 @@ def _write_runtime_params(context, *_args, **_kwargs):
 
     nav2_bt_dir = get_package_share_directory("nav2_bt_navigator")
     bt_tree_dir = os.path.join(nav2_bt_dir, "behavior_trees")
+    temp_dir = tempfile.mkdtemp(prefix="rai_nav2_")
+    runtime_nav_to_pose_bt = os.path.join(
+        temp_dir,
+        "navigate_to_pose_w_replanning_and_recovery.xml",
+    )
+    runtime_nav_through_poses_bt = os.path.join(
+        temp_dir,
+        "navigate_through_poses_w_replanning_and_recovery.xml",
+    )
+    _write_runtime_bt_tree(
+        os.path.join(bt_tree_dir, "navigate_to_pose_w_replanning_and_recovery.xml"),
+        runtime_nav_to_pose_bt,
+    )
+    _write_runtime_bt_tree(
+        os.path.join(bt_tree_dir, "navigate_through_poses_w_replanning_and_recovery.xml"),
+        runtime_nav_through_poses_bt,
+    )
 
     controller_params["controller_plugins"] = ["FollowPath"]
     controller_params["goal_checker_plugins"] = ["general_goal_checker"]
@@ -254,16 +284,9 @@ def _write_runtime_params(context, *_args, **_kwargs):
     planner_params["GridBased"] = global_preset
     planner_params["selected_global_planner"] = global_planner
     bt_params["plugin_lib_names"] = BT_PLUGIN_LIB_NAMES
-    bt_params["default_nav_to_pose_bt_xml"] = os.path.join(
-        bt_tree_dir,
-        "navigate_to_pose_w_replanning_and_recovery.xml",
-    )
-    bt_params["default_nav_through_poses_bt_xml"] = os.path.join(
-        bt_tree_dir,
-        "navigate_through_poses_w_replanning_and_recovery.xml",
-    )
+    bt_params["default_nav_to_pose_bt_xml"] = runtime_nav_to_pose_bt
+    bt_params["default_nav_through_poses_bt_xml"] = runtime_nav_through_poses_bt
 
-    temp_dir = tempfile.mkdtemp(prefix="rai_nav2_")
     runtime_params_path = os.path.join(temp_dir, "nav2_runtime.yaml")
     with open(runtime_params_path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(config, handle, sort_keys=False)
