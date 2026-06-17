@@ -175,6 +175,8 @@ def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_para
 
     controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
     planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
+    controller_params["goal_checker_plugins"] = ["general_goal_checker"]
+    controller_params["current_goal_checker"] = "general_goal_checker"
     controller_params["selected_local_planner"] = local_planner
     planner_params["selected_global_planner"] = global_planner
 

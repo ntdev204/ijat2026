@@ -246,6 +246,9 @@ def _write_runtime_params(context, *_args, **_kwargs):
     controller_params["current_goal_checker"] = "general_goal_checker"
     controller_params["FollowPath"] = local_preset
     controller_params["selected_local_planner"] = local_planner
+    if local_planner == "MPPI":
+        model_dt = float(local_preset.get("model_dt", 0.05))
+        controller_params["controller_frequency"] = 1.0 / model_dt
 
     planner_params["planner_plugins"] = ["GridBased"]
     planner_params["GridBased"] = global_preset
@@ -324,6 +327,7 @@ def generate_launch_description():
                 "map": map_file,
                 "slam": slam,
                 "use_sim_time": use_sim_time,
+                "use_composition": "True",
                 "params_file": runtime_params,
             }.items(),
         ),
