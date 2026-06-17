@@ -58,8 +58,23 @@ nav_msgs::msg::Path LocalPlanHandler::transformAndCropPlan(
     return local_path;
   }
 
-  // 1. Prune plan first based on current robot pose
-  prunePlan(robot_pose);
+  // 1. Prune plan first in the global plan frame.
+  const std::string plan_frame = global_plan_.header.frame_id;
+  if (plan_frame.empty() || robot_pose.header.frame_id == plan_frame) {
+    prunePlan(robot_pose);
+  } else {
+    geometry_msgs::msg::PoseStamped prune_pose = robot_pose;
+    prune_pose.header.stamp.sec = 0;
+    prune_pose.header.stamp.nanosec = 0;
+    try {
+      prune_pose = tf->transform(prune_pose, plan_frame);
+      prunePlan(prune_pose);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("LocalPlanHandler"),
+        "Could not transform robot pose to plan frame for pruning: %s", ex.what());
+    }
+  }
 
   // 2. Transform poses to local costmap frame and check bounds
   double cum_dist = 0.0;
@@ -69,12 +84,17 @@ nav_msgs::msg::Path LocalPlanHandler::transformAndCropPlan(
   for (const auto & global_pose : global_plan_.poses) {
     geometry_msgs::msg::PoseStamped transformed_pose;
     try {
-      // Set target frame and time
-      transformed_pose.header.frame_id = local_frame;
+      auto pose_to_transform = global_pose;
+      if (pose_to_transform.header.frame_id.empty()) {
+        pose_to_transform.header.frame_id = plan_frame;
+      }
+
+      // Global plan stamps can be older than the TF cache; use latest TF for cropping.
+      pose_to_transform.header.stamp.sec = 0;
+      pose_to_transform.header.stamp.nanosec = 0;
+
+      tf->transform(pose_to_transform, transformed_pose, local_frame);
       transformed_pose.header.stamp = robot_pose.header.stamp;
-      
-      // Perform transformation using TF
-      tf->transform(global_pose, transformed_pose, local_frame);
     }
     catch (const tf2::TransformException & ex) {
       RCLCPP_ERROR(rclcpp::get_logger("LocalPlanHandler"), "Could not transform pose: %s", ex.what());

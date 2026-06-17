@@ -137,6 +137,48 @@ TEST(LocalPlanHandlerTest, TransformAndCropPlan)
   EXPECT_NEAR(length_cropped.poses[1].pose.position.x, 0.0, 1e-6);
 }
 
+TEST(LocalPlanHandlerTest, TransformAndCropPlanUsesLatestTfForStalePlanStamps)
+{
+  LocalPlanHandler handler;
+
+  auto clock = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+  auto tf_buffer = std::make_shared<tf2_ros::Buffer>(clock);
+
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf_msg.header.frame_id = "map";
+  tf_msg.header.stamp = rclcpp::Time(10, 0);
+  tf_msg.child_frame_id = "odom";
+  tf_msg.transform.translation.x = 1.0;
+  tf_msg.transform.translation.y = 0.0;
+  tf_msg.transform.rotation.w = 1.0;
+  tf_buffer->setTransform(tf_msg, "test_authority", false);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.header.stamp = rclcpp::Time(1, 0);
+  for (int i = 0; i < 3; ++i) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = "map";
+    pose.header.stamp = rclcpp::Time(1, 0);
+    pose.pose.position.x = static_cast<double>(i);
+    pose.pose.orientation.w = 1.0;
+    path.poses.push_back(pose);
+  }
+  handler.setGlobalPlan(path);
+
+  geometry_msgs::msg::PoseStamped robot_pose;
+  robot_pose.header.frame_id = "map";
+  robot_pose.header.stamp = rclcpp::Time(10, 0);
+  robot_pose.pose.orientation.w = 1.0;
+
+  nav2_costmap_2d::Costmap2D costmap(40, 40, 0.1, -2.0, -2.0, 0);
+  nav_msgs::msg::Path cropped = handler.transformAndCropPlan(
+    robot_pose, tf_buffer, "odom", costmap, 10.0);
+
+  ASSERT_FALSE(cropped.poses.empty());
+  EXPECT_EQ(cropped.header.frame_id, "odom");
+}
+
 TEST(LocalPlanHandlerTest, ResamplePath)
 {
   nav_msgs::msg::Path path;
