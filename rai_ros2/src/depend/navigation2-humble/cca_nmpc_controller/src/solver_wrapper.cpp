@@ -1,9 +1,22 @@
 #include "cca_nmpc_controller/solver_wrapper.hpp"
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 
 namespace cca_nmpc_controller
 {
+namespace
+{
+void setCasadiPath(const std::string & directory)
+{
+#ifdef _WIN32
+  _putenv_s("CASADIPATH", directory.c_str());
+#else
+  setenv("CASADIPATH", directory.c_str(), 1);
+#endif
+}
+}  // namespace
 
 SolverWrapper::SolverWrapper(int horizon_steps, int num_humans)
 : horizon_steps_(horizon_steps), num_humans_(num_humans)
@@ -39,9 +52,21 @@ bool SolverWrapper::init(const std::string & lib_path)
 {
   std::lock_guard<std::mutex> lock(solver_mutex_);
   try {
-    std::cout << "[SolverWrapper] Loading external solver library: " << lib_path << std::endl;
+    const std::filesystem::path solver_library(lib_path);
+    if (!std::filesystem::exists(solver_library)) {
+      std::cerr << "[SolverWrapper] Solver library does not exist: " << lib_path << std::endl;
+      initialized_ = false;
+      return false;
+    }
+
+    const std::string solver_directory = solver_library.parent_path().string();
+    const std::string solver_filename = solver_library.filename().string();
+
+    setCasadiPath(solver_directory);
+
+    std::cout << "[SolverWrapper] Loading external solver library: " << solver_library << std::endl;
     // Load the code-generated solver function from the shared library
-    solver_ = casadi::external("canmpc_solver", lib_path);
+    solver_ = casadi::external("canmpc_solver", solver_filename);
     initialized_ = true;
     return true;
   } catch (const std::exception & e) {

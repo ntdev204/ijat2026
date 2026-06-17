@@ -9,6 +9,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace cca_nmpc_controller
 {
@@ -146,21 +147,21 @@ void CCANMPCController::configure(
 
   std::vector<std::string> search_paths;
   for (const auto & package_prefix : package_prefixes) {
-    search_paths.push_back(package_prefix + "/lib/libnav2_canmpc_solver.so");
     search_paths.push_back(package_prefix + "/lib/libcanmpc_solver.so");
-    search_paths.push_back(package_prefix + "/bin/nav2_canmpc_solver.dll");
-    search_paths.push_back(package_prefix + "/lib/nav2_canmpc_solver.dll");
     search_paths.push_back(package_prefix + "/bin/canmpc_solver.dll");
     search_paths.push_back(package_prefix + "/lib/canmpc_solver.dll");
-    search_paths.push_back(package_prefix + "/bin/libnav2_canmpc_solver.dll");
-    search_paths.push_back(package_prefix + "/lib/libnav2_canmpc_solver.dll");
     search_paths.push_back(package_prefix + "/bin/libcanmpc_solver.dll");
     search_paths.push_back(package_prefix + "/lib/libcanmpc_solver.dll");
+    search_paths.push_back(package_prefix + "/lib/libcanmpc_solver.dylib");
   }
 
   bool loaded = false;
   std::string tried_paths = "";
   for (const auto & path : search_paths) {
+    if (!std::filesystem::exists(path)) {
+      tried_paths += "\n - " + path + " (missing)";
+      continue;
+    }
     RCLCPP_INFO(logger_, "Attempting to load solver from: %s", path.c_str());
     if (solver_wrapper_->init(path)) {
       RCLCPP_INFO(logger_, "Successfully loaded CasADi solver from: %s", path.c_str());
