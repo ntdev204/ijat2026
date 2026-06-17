@@ -1,8 +1,14 @@
 #include "cca_nmpc_controller/solver_wrapper.hpp"
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace cca_nmpc_controller
 {
@@ -16,6 +22,52 @@ void setCasadiPath(const std::string & directory)
   setenv("CASADIPATH", directory.c_str(), 1);
 #endif
 }
+
+#ifndef _WIN32
+class ScopedStdStreamSilencer
+{
+public:
+  ScopedStdStreamSilencer()
+  {
+    fflush(stdout);
+    fflush(stderr);
+    saved_stdout_ = dup(STDOUT_FILENO);
+    saved_stderr_ = dup(STDERR_FILENO);
+    null_fd_ = open("/dev/null", O_WRONLY);
+
+    if (null_fd_ >= 0) {
+      dup2(null_fd_, STDOUT_FILENO);
+      dup2(null_fd_, STDERR_FILENO);
+    }
+  }
+
+  ~ScopedStdStreamSilencer()
+  {
+    fflush(stdout);
+    fflush(stderr);
+    if (saved_stdout_ >= 0) {
+      dup2(saved_stdout_, STDOUT_FILENO);
+      close(saved_stdout_);
+    }
+    if (saved_stderr_ >= 0) {
+      dup2(saved_stderr_, STDERR_FILENO);
+      close(saved_stderr_);
+    }
+    if (null_fd_ >= 0) {
+      close(null_fd_);
+    }
+  }
+
+private:
+  int saved_stdout_{-1};
+  int saved_stderr_{-1};
+  int null_fd_{-1};
+};
+#else
+class ScopedStdStreamSilencer
+{
+};
+#endif
 }  // namespace
 
 SolverWrapper::SolverWrapper(int horizon_steps, int num_humans)
@@ -196,7 +248,11 @@ SolveOutput SolverWrapper::solve(const SolveInput & input)
     arg["lbg"] = lbg;
     arg["ubg"] = ubg;
 
-    std::map<std::string, casadi::DM> res = solver_(arg);
+    std::map<std::string, casadi::DM> res;
+    {
+      ScopedStdStreamSilencer silence_solver_output;
+      res = solver_(arg);
+    }
 
     // Extract optimization results
     std::vector<double> x_all = std::vector<double>(res.at("x"));

@@ -242,6 +242,8 @@ def _write_runtime_params(context, *_args, **_kwargs):
     bt_tree_dir = os.path.join(nav2_bt_dir, "behavior_trees")
 
     controller_params["controller_plugins"] = ["FollowPath"]
+    controller_params["goal_checker_plugins"] = ["general_goal_checker"]
+    controller_params["current_goal_checker"] = "general_goal_checker"
     controller_params["FollowPath"] = local_preset
     controller_params["selected_local_planner"] = local_planner
 
