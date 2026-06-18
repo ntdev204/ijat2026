@@ -14,6 +14,11 @@ Tài liệu companion cho phân vai thiết bị và rule web/API:
 - Pi Ethernet nội bộ: `25.12.4.101`
 - Jetson Ethernet nội bộ: `25.12.4.100`
 
+Quy ước endpoint:
+
+- nếu `rai_website` chạy trên laptop, Pi-side API endpoint là `http://100.120.77.81:8080`
+- Ethernet nội bộ `25.12.4.101` chỉ dùng cho giao tiếp Pi-Jetson hoặc debug nội bộ
+
 ## 1. Mục tiêu hệ thống
 
 Kiến trúc đang dùng:

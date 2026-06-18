@@ -16,7 +16,8 @@ Bảng này chỉ để tham chiếu vận hành thực tế. Nó không thay th
 
 Quy ước dùng trong runtime:
 
-- `Pi-side API endpoint`: ưu tiên `http://25.12.4.101:8080` khi frontend hoặc công cụ nội bộ cần nói chuyện trực tiếp với Pi qua Ethernet nội bộ.
+- `Pi-side API endpoint` cho frontend chạy trên laptop: `http://100.120.77.81:8080`
+- `Pi-side API endpoint` cho giao tiếp nội bộ Pi-Jetson qua Ethernet: `http://25.12.4.101:8080`
 - `Jetson-side runtime`: `25.12.4.100` là địa chỉ Ethernet nội bộ của Jetson để debug hoặc kiểm tra node phía Jetson khi cần.
 - `Laptop`: dùng IP `100.93.83.87` ở mạng chung khi chạy frontend hoặc terminal giám sát từ máy người dùng.
 
@@ -126,6 +127,11 @@ Web UI trong vận hành bình thường phải dùng:
 ```text
 Pi-side API endpoint
 ```
+
+Trong mô hình hiện tại:
+
+- nếu `rai_website` chạy trên laptop, endpoint đúng là `http://100.120.77.81:8080`
+- nếu một tool chạy trực tiếp trong mạng Ethernet nội bộ Pi-Jetson, có thể dùng `http://25.12.4.101:8080`
 
 Không dùng Jetson API làm API mặc định cho frontend.
 
@@ -277,7 +283,13 @@ cd /home/rai/ijat2026/rai_website
 npm run dev
 ```
 
-Nếu frontend dev server không chạy cùng host với `rai_web_api`, chỉ cần cấu hình `NEXT_PUBLIC_API_URL` tới Pi-side API endpoint của hệ Ethernet nội bộ. Tài liệu này không cố định IP hay bắt buộc setup IP thủ công.
+Nếu frontend dev server chạy trên laptop như mô hình hiện tại, cấu hình nên là Pi-side API endpoint ở mạng chung:
+
+```bash
+NEXT_PUBLIC_API_URL=http://100.120.77.81:8080 npm run dev
+```
+
+Ethernet nội bộ `25.12.4.101` dành cho liên kết Pi-Jetson hoặc tool nội bộ, không phải endpoint mặc định cho laptop frontend.
 
 4. Kiểm tra ở UI:
 
