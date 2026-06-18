@@ -1,0 +1,22 @@
+required_topics:
+  - /scan
+  - /scan_filtered
+  - /odom
+  - /imu/data_raw
+  - /tf
+  - /tf_static
+  - /cmd_vel
+  - /cca_nmpc/cmd_vel
+  - /canmpc/context
+  - /canmpc/humans
+  - /canmpc/adaptive_bounds
+  - /canmpc/predicted_trajectory
+  - /canmpc/local_reference_path
+  - /canmpc/solver_stats
+  - /local_costmap/costmap
+  - /local_costmap/published_footprint
+optional_camera_topics:
+  - /camera/color/image_raw
+  - /camera/depth/image_rect_raw
+  - /camera/aligned_depth_to_color/image_raw
+  - /camera/camera_info

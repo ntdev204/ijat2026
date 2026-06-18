@@ -1,0 +1,1 @@
+run_id,scenario_id,controller_id,environment,start_time,end_time,duration_sec,bag_path,success,collision,timeout,intervention,random_seed,robot_start_x,robot_start_y,robot_start_theta,goal_x,goal_y,goal_theta,human_behavior,notes

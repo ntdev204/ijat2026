@@ -16,7 +16,7 @@
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
-  <depend>ccanmpc_msgs</depend>
+  <depend>rai_ccanmpc_controller</depend>
   <depend>tf2_msgs</depend>
   <depend>rosbag2_py</depend>
   <depend>tf2_ros</depend>

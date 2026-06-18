@@ -1,0 +1,11 @@
+scenarios:
+  - id: S1_open_zone
+    description: Open zone with sparse human interaction.
+  - id: S2_crossing_human
+    description: Single human crossing the robot path.
+  - id: S3_corridor
+    description: Constrained corridor navigation.
+  - id: S4_occlusion
+    description: Human detection with partial occlusion.
+  - id: S5_dense_dynamic
+    description: Multiple dynamic humans.

@@ -1,0 +1,11 @@
+int32 id
+float64 x
+float64 y
+float64 vx
+float64 vy
+float64 confidence
+float64 age_sec
+float64 covariance_x
+float64 covariance_y
+float64 covariance_vx
+float64 covariance_vy

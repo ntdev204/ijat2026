@@ -38,6 +38,8 @@
   <exec_depend>imu_filter_madgwick</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>
   <exec_depend>lslidar_driver</exec_depend>
+  <exec_depend>rai_web_api</exec_depend>
+  <exec_depend>rai_ccanmpc_controller</exec_depend>
   <exec_depend>robot_localization</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>rai_slam_toolbox</exec_depend>

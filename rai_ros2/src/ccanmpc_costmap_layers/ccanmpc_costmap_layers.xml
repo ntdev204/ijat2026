@@ -1,7 +1,0 @@
-<library path="ccanmpc_costmap_layers">
-  <class name="ccanmpc_costmap_layers::HumanSemanticLayer" type="ccanmpc_costmap_layers::HumanSemanticLayer" base_class_type="nav2_costmap_2d::Layer">
-    <description>
-      Nav2 Local Costmap plugin that injects high-cost semantic zone around active human positions.
-    </description>
-  </class>
-</library>

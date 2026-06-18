@@ -54,7 +54,7 @@ def parse_header(blob):
     frame_id, offset = read_string(blob, 12)
     return sec + nanosec * 1e-9, frame_id, offset
 
-# Parse ccanmpc_msgs/msg/Context
+# Parse cca_nmpc_controller/msg/Context
 def parse_context(blob):
     stamp, frame_id, offset = parse_header(blob)
     offset = align(offset, 8)
@@ -67,7 +67,7 @@ def parse_context(blob):
     occlusion_flag = bool(blob[offset]) if offset < len(blob) else False
     return stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag
 
-# Parse ccanmpc_msgs/msg/HumanStates
+# Parse cca_nmpc_controller/msg/HumanStates
 def parse_human_states(blob):
     stamp, frame_id, offset = parse_header(blob)
     offset = align(offset, 4)
@@ -168,7 +168,7 @@ def parse_odom(blob):
     
     return stamp, x, y, theta, vx, vy, wz
 
-# Parse ccanmpc_msgs/msg/SolverStats
+# Parse cca_nmpc_controller/msg/SolverStats
 def parse_solver_stats(blob):
     if len(blob) < 30:
         return 0, 0.0, 0, "unknown", False, False
@@ -342,7 +342,11 @@ class Ros2Db3Reader:
                         "timestamp": stamp_sec,
                         "data": floats
                     })
-                elif topic_type == "ccanmpc_msgs/msg/Context":
+                elif topic_type in (
+                    "ccanmpc_msgs/msg/Context",
+                    "cca_nmpc_controller/msg/Context",
+                    "rai_ccanmpc_controller/msg/Context",
+                ):
                     m_stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag = parse_context(data)
                     parsed_messages.append({
                         "timestamp": m_stamp if m_stamp > 0 else stamp_sec,
@@ -355,13 +359,21 @@ class Ros2Db3Reader:
                         "omega_max": omega_max,
                         "occlusion_flag": occlusion_flag,
                     })
-                elif topic_type == "ccanmpc_msgs/msg/HumanStates":
+                elif topic_type in (
+                    "ccanmpc_msgs/msg/HumanStates",
+                    "cca_nmpc_controller/msg/HumanStates",
+                    "rai_ccanmpc_controller/msg/HumanStates",
+                ):
                     m_stamp, humans = parse_human_states(data)
                     parsed_messages.append({
                         "timestamp": m_stamp if m_stamp > 0 else stamp_sec,
                         "humans": humans,
                     })
-                elif topic_type == "ccanmpc_msgs/msg/SolverStats":
+                elif topic_type in (
+                    "ccanmpc_msgs/msg/SolverStats",
+                    "cca_nmpc_controller/msg/SolverStats",
+                    "rai_ccanmpc_controller/msg/SolverStats",
+                ):
                     m_stamp, solve_time_ms, iter_count, status, t_flag, c_flag = parse_solver_stats(data)
                     parsed_messages.append({
                         "timestamp": m_stamp if m_stamp > 0 else stamp_sec,

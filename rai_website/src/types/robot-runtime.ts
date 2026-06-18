@@ -44,15 +44,23 @@ export interface Nav2Config {
 export interface DatasetRun {
   id: number;
   run_name: string;
+  scenario_name?: string;
   environment: string;
   controller_id: string;
+  run_index?: number | null;
+  split?: string;
   status: string;
+  validation_status?: string | null;
+  success?: boolean | null;
   data_path: string;
   raw_bag_path?: string;
   metadata_path?: string;
   zip_path?: string;
   duration?: number | null;
   samples_count?: number | null;
+  phi_h_max?: number | null;
+  min_human_clearance?: number | null;
+  timeout_rate?: number | null;
   start_time?: string | null;
 }
 
@@ -70,6 +78,28 @@ export interface ActiveDatasetPayload {
   run: DatasetRun | null;
   telemetry?: unknown;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface DatasetArtifactsPayload {
+  base_path: string;
+  required_topics: string[];
+  optional_camera_topics: string[];
+  files: Record<string, boolean>;
+}
+
+export interface DatasetPipelineResult {
+  success: boolean;
+  action: string;
+  results: Array<{
+    command: string[];
+    returncode: number;
+    stdout: string;
+    stderr: string;
+    duration_sec: number;
+    started_at?: string;
+    finished_at?: string;
+  }>;
+  artifacts: DatasetArtifactsPayload;
 }
 
 export type RuntimeEnvironment = "real" | "sim";

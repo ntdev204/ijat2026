@@ -23,7 +23,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry, Path as NavPath
 from sensor_msgs.msg import CameraInfo, Image, JointState, LaserScan, Imu
 from std_msgs.msg import Float32, Float32MultiArray, String
 from tf2_msgs.msg import TFMessage
-from ccanmpc_msgs.msg import Context, HumanStates
+from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
 
 import rosbag2_py
 from rosbag2_py import ConverterOptions, StorageOptions, TopicMetadata
@@ -100,14 +100,15 @@ class DatasetCollectorNode(Node):
             ('/wheel_encoders', JointState, 'sensor_msgs/msg/JointState', reliable_qos),
             ('/voltage', Float32, 'std_msgs/msg/Float32', reliable_qos),
             ('/context', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/context', Context, 'ccanmpc_msgs/msg/Context', reliable_qos),
-            ('/canmpc/humans', HumanStates, 'ccanmpc_msgs/msg/HumanStates', reliable_qos),
+            ('/canmpc/context', Context, 'rai_ccanmpc_controller/msg/Context', reliable_qos),
+            ('/canmpc/humans', HumanStates, 'rai_ccanmpc_controller/msg/HumanStates', reliable_qos),
             ('/canmpc/context_json', String, 'std_msgs/msg/String', reliable_qos),
             ('/canmpc/humans_json', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/adaptive_bounds', Float32MultiArray, 'std_msgs/msg/Float32MultiArray', reliable_qos),
+            ('/canmpc/adaptive_bounds', AdaptiveBounds, 'rai_ccanmpc_controller/msg/AdaptiveBounds', reliable_qos),
+            ('/canmpc/adaptive_bounds_array', Float32MultiArray, 'std_msgs/msg/Float32MultiArray', reliable_qos),
             ('/canmpc/local_reference_path', NavPath, 'nav_msgs/msg/Path', reliable_qos),
             ('/canmpc/predicted_trajectory', NavPath, 'nav_msgs/msg/Path', reliable_qos),
-            ('/canmpc/solver_stats', String, 'std_msgs/msg/String', reliable_qos),
+            ('/canmpc/solver_stats', SolverStats, 'rai_ccanmpc_controller/msg/SolverStats', reliable_qos),
             ('/local_costmap/costmap', OccupancyGrid, 'nav_msgs/msg/OccupancyGrid', reliable_qos),
             ('/local_costmap/published_footprint', PolygonStamped, 'geometry_msgs/msg/PolygonStamped', reliable_qos),
         ]
@@ -307,8 +308,10 @@ class DatasetCollectorNode(Node):
             self._handle_humans_json(msg.data)
         elif topic_name == '/canmpc/adaptive_bounds':
             self._handle_adaptive_bounds(msg)
+        elif topic_name == '/canmpc/adaptive_bounds_array':
+            self._handle_adaptive_bounds_array(msg)
         elif topic_name == '/canmpc/solver_stats':
-            self._handle_solver_stats(msg.data)
+            self._handle_solver_stats(msg)
 
     def _write_message(self, topic_name: str, msg):
         if self.is_recording and self.bag_writer:
@@ -386,11 +389,16 @@ class DatasetCollectorNode(Node):
         for human in msg.humans:
             humans.append({
                 'id': int(human.id),
-                'x': float(human.pose.position.x),
-                'y': float(human.pose.position.y),
-                'vx': float(human.velocity.linear.x),
-                'vy': float(human.velocity.linear.y),
+                'x': float(human.x),
+                'y': float(human.y),
+                'vx': float(human.vx),
+                'vy': float(human.vy),
                 'confidence': float(human.confidence),
+                'age_sec': float(human.age_sec),
+                'covariance_x': float(human.covariance_x),
+                'covariance_y': float(human.covariance_y),
+                'covariance_vx': float(human.covariance_vx),
+                'covariance_vy': float(human.covariance_vy),
             })
         self.metadata['human_state']['samples'] += 1
         self.metadata['human_state']['last'] = {
@@ -398,7 +406,14 @@ class DatasetCollectorNode(Node):
             'humans': humans,
         }
 
-    def _handle_adaptive_bounds(self, msg: Float32MultiArray):
+    def _handle_adaptive_bounds(self, msg: AdaptiveBounds):
+        context = self.metadata['continuous_context']
+        self._append_if_number(context['d_safe_samples'], msg.d_safe)
+        self._append_if_number(context['vx_max_samples'], msg.vx_max)
+        self._append_if_number(context['vy_max_samples'], msg.vy_max)
+        self._append_if_number(context['omega_max_samples'], msg.omega_max)
+
+    def _handle_adaptive_bounds_array(self, msg: Float32MultiArray):
         data = list(msg.data)
         if len(data) >= 5:
             context = self.metadata['continuous_context']
@@ -407,16 +422,20 @@ class DatasetCollectorNode(Node):
             self._append_if_number(context['vy_max_samples'], data[3])
             self._append_if_number(context['omega_max_samples'], data[4])
 
-    def _handle_solver_stats(self, data: str):
-        payload = self._loads_json(data)
+    def _handle_solver_stats(self, msg: SolverStats):
+        payload = {
+            'solve_time_ms': float(msg.solve_time_ms),
+            'iter_count': int(msg.iter_count),
+            'status': str(msg.status),
+            'timeout_flag': bool(msg.timeout_flag),
+            'collision_flag': bool(msg.collision_flag),
+        }
         solver = self.metadata['solver']
         solver['samples'] += 1
-        solver['last'] = payload if payload else {'raw': data}
-        if payload and payload.get('timeout'):
+        solver['last'] = payload
+        if payload.get('timeout_flag'):
             solver['timeouts'] += 1
-        solve_time = self._extract_solve_time_ms(payload)
-        if solve_time is not None:
-            solver['solve_time_ms_samples'].append(solve_time)
+        solver['solve_time_ms_samples'].append(payload['solve_time_ms'])
 
     @staticmethod
     def _extract_solve_time_ms(payload: dict[str, Any] | None) -> float | None:

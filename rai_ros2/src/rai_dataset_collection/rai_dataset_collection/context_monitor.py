@@ -21,7 +21,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, LaserScan
 from std_msgs.msg import Float32MultiArray, String
-from ccanmpc_msgs.msg import AdaptiveBounds, Context, HumanState, HumanStates
+from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanState, HumanStates
 
 
 class ContextMonitor(Node):
@@ -76,6 +76,7 @@ class ContextMonitor(Node):
             'vx': 0.0,
             'vy': 0.0,
             'confidence': 0.0,
+            'age_sec': 0.0,
         }
         self.occlusion_flag = False
 
@@ -83,8 +84,8 @@ class ContextMonitor(Node):
         self.humans_pub = self.create_publisher(HumanStates, '/canmpc/humans', 10)
         self.context_json_pub = self.create_publisher(String, '/canmpc/context_json', 10)
         self.humans_json_pub = self.create_publisher(String, '/canmpc/humans_json', 10)
-        self.bounds_pub = self.create_publisher(Float32MultiArray, '/canmpc/adaptive_bounds', 10)
-        self.typed_bounds_pub = self.create_publisher(AdaptiveBounds, '/canmpc/adaptive_bounds_msg', 10)
+        self.bounds_pub = self.create_publisher(Float32MultiArray, '/canmpc/adaptive_bounds_array', 10)
+        self.typed_bounds_pub = self.create_publisher(AdaptiveBounds, '/canmpc/adaptive_bounds', 10)
         self.legacy_context_pub = self.create_publisher(String, '/context', 10)
 
         sensor_qos = QoSProfile(
@@ -169,6 +170,7 @@ class ContextMonitor(Node):
             'vx': vx_h,
             'vy': vy_h,
             'confidence': 0.5,
+            'age_sec': 0.0,
         }
         self.last_human_observation = {'time': now, 'x': x_h, 'y': y_h}
 
@@ -209,7 +211,9 @@ class ContextMonitor(Node):
             self.nearest_human_dist = None
             self.occlusion_flag = False
             self.human_state['confidence'] = 0.0
+            self.human_state['age_sec'] = time.time() - self.last_human_time
             return 10.0
+        self.human_state['age_sec'] = time.time() - self.last_human_time
         return float(self.nearest_human_dist or 10.0)
 
     def _phi_h(self, distance: float) -> float:
@@ -218,9 +222,9 @@ class ContextMonitor(Node):
     def _adaptive_bounds(self, phi_h: float) -> dict:
         return {
             'd_safe': self.d_min + self.k_d * phi_h,
-            'vx_max': max(self.vx_min_bound, self.vx_max_0 - self.k_vx * phi_h),
-            'vy_max': max(self.vy_min_bound, self.vy_max_0 - self.k_vy * phi_h),
-            'omega_max': max(self.omega_min_bound, self.omega_max_0 - self.k_omega * phi_h),
+            'vx_max': self.vx_min_bound + (self.vx_max_0 - self.vx_min_bound) * (1.0 - phi_h),
+            'vy_max': self.vy_min_bound + (self.vy_max_0 - self.vy_min_bound) * (1.0 - phi_h),
+            'omega_max': self.omega_min_bound + (self.omega_max_0 - self.omega_min_bound) * (1.0 - phi_h),
         }
 
     def _legacy_label(self, phi_h: float) -> str:
@@ -268,13 +272,12 @@ class ContextMonitor(Node):
             if self.human_state.get('confidence', 0.0) > 0.0:
                 human_msg = HumanState()
                 human_msg.id = int(self.human_state['id'])
-                human_msg.pose.position.x = float(self.human_state['x'])
-                human_msg.pose.position.y = float(self.human_state['y'])
-                human_msg.pose.position.z = 0.0
-                human_msg.pose.orientation.w = 1.0
-                human_msg.velocity.linear.x = float(self.human_state['vx'])
-                human_msg.velocity.linear.y = float(self.human_state['vy'])
+                human_msg.x = float(self.human_state['x'])
+                human_msg.y = float(self.human_state['y'])
+                human_msg.vx = float(self.human_state['vx'])
+                human_msg.vy = float(self.human_state['vy'])
                 human_msg.confidence = float(self.human_state['confidence'])
+                human_msg.age_sec = float(self.human_state.get('age_sec', 0.0))
                 humans_msg.humans.append(human_msg)
             self.humans_pub.publish(humans_msg)
 
@@ -307,6 +310,7 @@ class ContextMonitor(Node):
         typed_bounds_msg.vy_max = float(bounds['vy_max'])
         typed_bounds_msg.omega_max = float(bounds['omega_max'])
         typed_bounds_msg.d_safe = float(bounds['d_safe'])
+        typed_bounds_msg.q_scale = float(1.0 + phi_h)
         self.typed_bounds_pub.publish(typed_bounds_msg)
 
         if self.publish_legacy_context:

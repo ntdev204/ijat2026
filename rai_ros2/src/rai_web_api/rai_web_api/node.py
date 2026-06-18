@@ -12,9 +12,9 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
-from std_msgs.msg import Bool, Float32, Float32MultiArray, String
+from std_msgs.msg import Bool, Float32, String
 from action_msgs.msg import GoalStatus
-from ccanmpc_msgs.msg import Context, HumanStates
+from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
 
 try:
     from nav2_msgs.action import NavigateToPose
@@ -173,11 +173,11 @@ class WebBridgeNode(Node):
             )
         if self.bounds_sub is None:
             self.bounds_sub = self.create_subscription(
-                Float32MultiArray, '/canmpc/adaptive_bounds', self.bounds_callback, self.reliable_qos
+                AdaptiveBounds, '/canmpc/adaptive_bounds', self.bounds_callback, self.reliable_qos
             )
         if self.solver_sub is None:
             self.solver_sub = self.create_subscription(
-                String, '/canmpc/solver_stats', self.solver_callback, self.reliable_qos
+                SolverStats, '/canmpc/solver_stats', self.solver_callback, self.reliable_qos
             )
 
     def unregister_telemetry_client(self):
@@ -400,11 +400,12 @@ class WebBridgeNode(Node):
             self.telemetry["humans"] = [
                 {
                     "id": int(human.id),
-                    "x": round(float(human.pose.position.x), 3),
-                    "y": round(float(human.pose.position.y), 3),
-                    "vx": round(float(human.velocity.linear.x), 3),
-                    "vy": round(float(human.velocity.linear.y), 3),
+                    "x": round(float(human.x), 3),
+                    "y": round(float(human.y), 3),
+                    "vx": round(float(human.vx), 3),
+                    "vy": round(float(human.vy), 3),
                     "confidence": round(float(human.confidence), 3),
+                    "age_sec": round(float(human.age_sec), 3),
                 }
                 for human in msg.humans
             ]
@@ -415,26 +416,25 @@ class WebBridgeNode(Node):
             return "HPZ"
         return "OZ"
 
-    def bounds_callback(self, msg: Float32MultiArray):
-        data = list(msg.data)
-        if len(data) < 5:
-            return
+    def bounds_callback(self, msg: AdaptiveBounds):
         with self.lock:
             self.telemetry["context"].update({
-                "phi_h": round(float(data[0]), 4),
-                "d_safe": round(float(data[1]), 3),
-                "vx_max": round(float(data[2]), 3),
-                "vy_max": round(float(data[3]), 3),
-                "omega_max": round(float(data[4]), 3),
+                "d_safe": round(float(msg.d_safe), 3),
+                "vx_max": round(float(msg.vx_max), 3),
+                "vy_max": round(float(msg.vy_max), 3),
+                "omega_max": round(float(msg.omega_max), 3),
+                "q_scale": round(float(msg.q_scale), 3),
             })
 
-    def solver_callback(self, msg: String):
+    def solver_callback(self, msg: SolverStats):
         with self.lock:
-            try:
-                payload = json.loads(msg.data)
-                self.telemetry["solver"] = payload if isinstance(payload, dict) else {"raw": msg.data}
-            except Exception:
-                self.telemetry["solver"] = {"raw": msg.data}
+            self.telemetry["solver"] = {
+                "solve_time_ms": round(float(msg.solve_time_ms), 3),
+                "iter_count": int(msg.iter_count),
+                "status": str(msg.status),
+                "timeout_flag": bool(msg.timeout_flag),
+                "collision_flag": bool(msg.collision_flag),
+            }
 
     def camera_callback(self, msg: Image):
         """Lưu frame ảnh thô mới nhất làm bộ đệm cho WebRTC"""

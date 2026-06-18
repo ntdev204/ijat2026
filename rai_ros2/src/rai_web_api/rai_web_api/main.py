@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import csv
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ from rai_web_api.webrtc import RosImageVideoTrack
 logger = logging.getLogger("rai_web_api")
 logging.basicConfig(level=os.getenv("RAI_API_LOG_LEVEL", "INFO"))
 
-DATASET_BASE_PATH = Path(os.getenv("RAI_DATASET_PATH", "~/rai_datasets/canmpc")).expanduser()
+DATASET_BASE_PATH = Path(os.getenv("RAI_DATASET_PATH", "/home/rai/ijat2026/dataset")).expanduser()
 DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 
@@ -49,8 +50,57 @@ bridge_node: Optional[WebBridgeNode] = None
 spin_thread: Optional[threading.Thread] = None
 peer_connections: set[RTCPeerConnection] = set()
 active_dataset_run_id: Optional[int] = None
+dataset_bag_process: Optional[subprocess.Popen] = None
 nav2_process: Optional[subprocess.Popen] = None
 slam_process: Optional[subprocess.Popen] = None
+
+DATASET_REQUIRED_TOPICS = [
+    "/scan",
+    "/scan_filtered",
+    "/odom",
+    "/imu/data_raw",
+    "/tf",
+    "/tf_static",
+    "/cmd_vel",
+    "/cca_nmpc/cmd_vel",
+    "/canmpc/context",
+    "/canmpc/humans",
+    "/canmpc/adaptive_bounds",
+    "/canmpc/predicted_trajectory",
+    "/canmpc/local_reference_path",
+    "/canmpc/solver_stats",
+    "/local_costmap/costmap",
+    "/local_costmap/published_footprint",
+]
+DATASET_CAMERA_TOPICS = [
+    "/camera/color/image_raw",
+    "/camera/depth/image_rect_raw",
+    "/camera/aligned_depth_to_color/image_raw",
+    "/camera/camera_info",
+]
+RUN_INDEX_FIELDS = [
+    "run_id",
+    "scenario_id",
+    "controller_id",
+    "environment",
+    "start_time",
+    "end_time",
+    "duration_sec",
+    "bag_path",
+    "success",
+    "collision",
+    "timeout",
+    "intervention",
+    "random_seed",
+    "robot_start_x",
+    "robot_start_y",
+    "robot_start_theta",
+    "goal_x",
+    "goal_y",
+    "goal_theta",
+    "human_behavior",
+    "notes",
+]
 
 NAV2_KILL_PATTERNS = (
     "ros2 launch rai_nav2 rai_nav2.launch.py",
@@ -64,10 +114,10 @@ SLAM_KILL_PATTERNS = (
 )
 
 NAV2_LOCAL_PLANNER_OPTIONS = [
-    {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "cca_nmpc_controller/CCANMPCController", "native": True},
-    {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
     {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
     {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
+    {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
+    {"id": "CCA_NMPC", "label": "CCA-NMPC standalone", "plugin": "rai_ccanmpc_controller/rai_ccanmpc_controller_node", "native": True},
 ]
 NAV2_GLOBAL_PLANNER_OPTIONS = [
     {"id": "A_STAR", "label": "A*", "plugin": "nav2_navfn_planner/NavfnPlanner"},
@@ -137,12 +187,28 @@ class DatasetStartRequest(BaseModel):
     environment: str = Field(default="real", pattern="^(sim|real)$")
     run_index: Optional[int] = Field(default=None, ge=0)
     split: str = Field(default="unsplit")
+    random_seed: Optional[int] = None
+    robot_start_x: Optional[float] = None
+    robot_start_y: Optional[float] = None
+    robot_start_theta: Optional[float] = None
+    goal_x: Optional[float] = None
+    goal_y: Optional[float] = None
+    goal_theta: Optional[float] = None
+    human_behavior: str = ""
+    intervention: bool = False
+    record_camera: bool = False
     notes: str = ""
 
 
 class DatasetCaptureRequest(BaseModel):
     tag: str = Field(default="corridor")
     class_name: str = Field(default="person")
+
+
+class DatasetPipelineRequest(BaseModel):
+    action: str = Field(default="all", pattern="^(validate|bag_to_csv|metrics|plots|tables|all)$")
+    run_id: Optional[int] = Field(default=None, ge=1)
+    bag_path: Optional[str] = None
 
 
 class TrainStartRequest(BaseModel):
@@ -1026,12 +1092,53 @@ async def _simulate_training_job(epochs: int) -> None:
     training_state["running"] = False
 
 
+@app.get("/api/dataset/artifacts")
+async def dataset_artifacts() -> dict:
+    _ensure_dataset_layout()
+    return _dataset_artifact_status()
+
+
+@app.post("/api/dataset/prepare")
+async def prepare_dataset_artifacts() -> dict:
+    _ensure_dataset_layout()
+    return {"success": True, **_dataset_artifact_status()}
+
+
+@app.post("/api/dataset/pipeline")
+async def run_dataset_pipeline(request: DatasetPipelineRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _ensure_dataset_layout()
+    if request.run_id and not request.bag_path:
+        run = await db.get(DatasetRun, request.run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Dataset run not found")
+        request.bag_path = run.raw_bag_path
+    commands = _dataset_pipeline_commands(request)
+    results = []
+    for command in commands:
+        started = datetime.utcnow()
+        completed = await asyncio.to_thread(_run_pipeline_command, command)
+        completed["started_at"] = started.isoformat()
+        completed["finished_at"] = datetime.utcnow().isoformat()
+        results.append(completed)
+        if completed["returncode"] != 0:
+            break
+    return {
+        "success": all(item["returncode"] == 0 for item in results),
+        "action": request.action,
+        "results": results,
+        "artifacts": _dataset_artifact_status(),
+    }
+
+
 @app.post("/api/dataset/start")
 async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends(get_db)) -> dict:
-    global active_dataset_run_id
+    global active_dataset_run_id, dataset_bag_process
     if active_dataset_run_id is not None:
         raise HTTPException(status_code=409, detail="A dataset run is already active")
+    if dataset_bag_process is not None and dataset_bag_process.poll() is None:
+        raise HTTPException(status_code=409, detail="ros2 bag record is already running")
 
+    _ensure_dataset_layout()
     scenario = await _get_or_create_scenario(db, request.scenario_name)
     if request.run_index is None:
         run_id = f"run_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
@@ -1042,7 +1149,9 @@ async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends
     run_path = DATASET_BASE_PATH / "raw" / request.environment / request.scenario_name / request.controller_id / run_id
     run_path.mkdir(parents=True, exist_ok=False)
     rosbag_path = run_path / "rosbag2"
+    rosbag_log_path = run_path / "rosbag_record.log"
     metadata_path = run_path / "metadata.json"
+    start_time = datetime.utcnow()
 
     voltage = None
     if bridge_node is not None:
@@ -1062,11 +1171,31 @@ async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends
         "run_index": request.run_index,
         "split": request.split,
         "status": "RECORDING",
-        "start_time": datetime.utcnow().isoformat(),
+        "start_time": start_time.isoformat(),
+        "end_time": "",
+        "duration_sec": "",
+        "bag_path": str(rosbag_path),
+        "required_topics": DATASET_REQUIRED_TOPICS,
+        "camera_topics": DATASET_CAMERA_TOPICS if request.record_camera else [],
+        "random_seed": request.random_seed,
+        "robot_start": {
+            "x": request.robot_start_x,
+            "y": request.robot_start_y,
+            "theta": request.robot_start_theta,
+        },
+        "goal": {
+            "x": request.goal_x,
+            "y": request.goal_y,
+            "theta": request.goal_theta,
+        },
+        "human_behavior": request.human_behavior,
+        "intervention": request.intervention,
+        "record_camera": request.record_camera,
         "notes": request.notes,
         "telemetry_at_start": telemetry_snapshot,
     }
     metadata_path.write_text(json.dumps(initial_metadata, indent=2), encoding="utf-8")
+    _upsert_run_index(_run_index_row(initial_metadata))
 
     run = DatasetRun(
         scenario_id=scenario.id,
@@ -1079,13 +1208,30 @@ async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends
         raw_bag_path=str(rosbag_path),
         metadata_path=str(metadata_path),
         status="RECORDING",
+        start_time=start_time,
         start_voltage=voltage,
         notes=request.notes,
     )
     db.add(run)
-    await db.commit()
-    await db.refresh(run)
-    active_dataset_run_id = run.id
+    try:
+        dataset_bag_process = _start_rosbag_record(
+            rosbag_path,
+            rosbag_log_path,
+            record_camera=request.record_camera,
+        )
+        initial_metadata["rosbag_pid"] = dataset_bag_process.pid
+        initial_metadata["rosbag_log_path"] = str(rosbag_log_path)
+        metadata_path.write_text(json.dumps(initial_metadata, indent=2), encoding="utf-8")
+        await db.commit()
+        await db.refresh(run)
+        active_dataset_run_id = run.id
+    except Exception as exc:
+        await db.rollback()
+        shutil.rmtree(run_path, ignore_errors=True)
+        dataset_bag_process = None
+        logger.exception("Failed to start dataset recording")
+        raise HTTPException(status_code=500, detail=f"Failed to start ros2 bag record: {exc}") from exc
+
     return {
         "success": True,
         "run_id": run.id,
@@ -1096,7 +1242,11 @@ async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends
         "run_key": run_id,
         "data_path": str(run_path),
         "rosbag_path": str(rosbag_path),
+        "rosbag_pid": dataset_bag_process.pid if dataset_bag_process else None,
+        "rosbag_log_path": str(rosbag_log_path),
         "metadata_path": str(metadata_path),
+        "run_index_path": str(DATASET_BASE_PATH / "metadata" / "run_index.csv"),
+        "recorded_topics": DATASET_REQUIRED_TOPICS + (DATASET_CAMERA_TOPICS if request.record_camera else []),
         "collector_parameters": {
             "base_path": str(DATASET_BASE_PATH),
             "environment": request.environment,
@@ -1121,7 +1271,7 @@ async def active_dataset() -> dict:
 
 @app.post("/api/dataset/stop")
 async def stop_dataset(background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)) -> dict:
-    global active_dataset_run_id
+    global active_dataset_run_id, dataset_bag_process
     if active_dataset_run_id is None:
         raise HTTPException(status_code=409, detail="No active dataset run")
 
@@ -1134,7 +1284,21 @@ async def stop_dataset(background_tasks: BackgroundTasks, db: AsyncSession = Dep
     run.end_time = end_time
     run.duration = (end_time - run.start_time).total_seconds()
     run.status = "COMPLETED"
+    rosbag_status = _stop_rosbag_record(dataset_bag_process)
+    dataset_bag_process = None
     run_metadata = _load_run_metadata(run.metadata_path)
+    if run_metadata:
+        run_metadata["status"] = "COMPLETED"
+        run_metadata["end_time"] = end_time.isoformat()
+        run_metadata["duration_sec"] = run.duration
+        run_metadata["rosbag_stop"] = rosbag_status
+        run_metadata["success"] = run_metadata.get("success", "")
+        run_metadata["collision"] = run_metadata.get("collision", "")
+        run_metadata["timeout"] = run_metadata.get("timeout", "")
+        metadata_path = Path(run.metadata_path) if run.metadata_path else None
+        if metadata_path:
+            metadata_path.write_text(json.dumps(run_metadata, indent=2), encoding="utf-8")
+        _upsert_run_index(_run_index_row(run_metadata))
     if run_metadata:
         run.samples_count = int(run_metadata.get("samples", 0) or 0)
         context = run_metadata.get("continuous_context", {})
@@ -1164,17 +1328,26 @@ async def stop_dataset(background_tasks: BackgroundTasks, db: AsyncSession = Dep
     background_tasks.add_task(_compress_dataset_run, run.id, run.data_path, zip_path)
     await db.commit()
     active_dataset_run_id = None
-    return {"success": True, "run_id": run.id, "zip_path": zip_path, "download_url": f"/api/dataset/download/{run.id}"}
+    return {
+        "success": True,
+        "run_id": run.id,
+        "zip_path": zip_path,
+        "download_url": f"/api/dataset/download/{run.id}",
+        "rosbag": rosbag_status,
+    }
 
 
 @app.get("/api/dataset/runs")
 async def list_dataset_runs(db: AsyncSession = Depends(get_db)) -> list[dict]:
     result = await db.execute(select(DatasetRun).order_by(desc(DatasetRun.start_time)).limit(100))
     runs = result.scalars().all()
-    return [
-        {
+    payload = []
+    for run in runs:
+        metadata = _load_run_metadata(run.metadata_path)
+        payload.append({
             "id": run.id,
             "run_name": run.run_name,
+            "scenario_name": metadata.get("scenario_id"),
             "environment": run.environment,
             "controller_id": run.controller_id,
             "run_index": run.run_index,
@@ -1197,9 +1370,8 @@ async def list_dataset_runs(db: AsyncSession = Depends(get_db)) -> list[dict]:
             "avg_percentage": run.avg_percentage,
             "file_size_bytes": run.file_size_bytes,
             "start_time": run.start_time.isoformat() if run.start_time else None,
-        }
-        for run in runs
-    ]
+        })
+    return payload
 
 
 @app.get("/api/dataset/runs/{run_id}/metrics")
@@ -1250,6 +1422,288 @@ async def download_dataset(run_id: int, db: AsyncSession = Depends(get_db)) -> F
         await db.commit()
 
     return FileResponse(path=zip_path, filename=zip_path.name, media_type="application/zip")
+
+
+def _ensure_dataset_layout() -> None:
+    directories = [
+        "raw/sim",
+        "raw/real",
+        "derived",
+        "metadata/calibration",
+        "metadata/splits",
+        "figures/system",
+        "figures/trajectories",
+        "figures/timeseries",
+        "figures/boxplots",
+        "figures/latency",
+        "figures/ablation",
+        "tables/csv",
+        "tables/latex",
+    ]
+    for relative in directories:
+        (DATASET_BASE_PATH / relative).mkdir(parents=True, exist_ok=True)
+
+    _ensure_csv_header(DATASET_BASE_PATH / "metadata" / "run_index.csv", RUN_INDEX_FIELDS)
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "controller_timeseries.csv", [
+        "timestamp", "run_id", "scenario_id", "controller_id", "x_r", "y_r", "theta_r",
+        "x_ref", "y_ref", "theta_ref", "tracking_error_xy", "tracking_error_theta",
+        "vx_cmd", "vy_cmd", "omega_cmd", "vx_odom", "vy_odom", "omega_odom", "d_h",
+        "phi_h", "d_safe", "vx_max_adaptive", "vy_max_adaptive", "omega_max_adaptive",
+        "q_x_adaptive", "q_y_adaptive", "q_theta_adaptive", "sample_count",
+        "evaluation_time_ms", "controller_status", "timeout_flag", "collision_flag",
+        "occlusion_flag",
+    ])
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "human_states.csv", [
+        "timestamp", "run_id", "scenario_id", "human_id", "x_h", "y_h", "vx_h", "vy_h",
+        "confidence", "age_sec", "cov_x", "cov_y", "cov_vx", "cov_vy", "x_h_gt",
+        "y_h_gt", "vx_h_gt", "vy_h_gt",
+    ])
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "human_prediction.csv", [
+        "timestamp", "run_id", "scenario_id", "human_id", "horizon_i", "x_h_pred",
+        "y_h_pred", "x_h_gt", "y_h_gt", "prediction_error",
+    ])
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "adaptation_timeseries.csv", [
+        "timestamp", "run_id", "scenario_id", "controller_id", "d_h", "phi_h", "d_safe",
+        "vx_max_adaptive", "vy_max_adaptive", "omega_max_adaptive", "q_x_adaptive",
+        "q_y_adaptive", "q_theta_adaptive", "vx_cmd", "vy_cmd", "omega_cmd",
+        "occlusion_flag",
+    ])
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "metrics_per_run.csv", [
+        "run_id", "scenario_id", "controller_id", "environment", "success", "collision",
+        "timeout", "duration_sec", "rmse_xy", "rmse_theta", "max_lateral_error", "d_min",
+        "d_avg", "d_5percentile", "violation_count", "violation_duration",
+        "collision_count", "jerk_mean", "jerk_max", "mean_abs_delta_u", "max_abs_delta_u",
+        "control_effort", "mean_abs_vx", "mean_abs_vy", "mean_abs_omega",
+        "solve_time_mean_ms", "solve_time_median_ms", "solve_time_p95_ms",
+        "solve_time_max_ms", "timeout_rate",
+    ])
+    _ensure_csv_header(DATASET_BASE_PATH / "derived" / "metrics_summary.csv", [
+        "scenario_id", "controller_id", "environment", "n_runs", "success_rate",
+        "collision_rate", "timeout_rate_mean", "rmse_xy_mean", "rmse_xy_std",
+        "d_min_mean", "d_min_std", "solve_time_p95_mean_ms",
+    ])
+
+    metadata_files = {
+        "metadata/sensors.yaml": {
+            "required_topics": DATASET_REQUIRED_TOPICS,
+            "optional_camera_topics": DATASET_CAMERA_TOPICS,
+        },
+        "metadata/robot_mecanum.yaml": {
+            "robot": "rai_mecanum",
+            "kinematics": "mecanum_omnidirectional",
+            "command_topic": "/cca_nmpc/cmd_vel",
+            "precondition": "All robot, human, path, and costmap samples must be transformed into one control frame before metric extraction.",
+        },
+        "metadata/controllers.yaml": {
+            "controllers": [
+                {"id": "CCA_NMPC", "type": "sampling_based_cca_predictive_control"},
+                {"id": "DWB", "type": "nav2_baseline"},
+                {"id": "MPPI", "type": "nav2_baseline"},
+            ],
+        },
+        "metadata/scenarios.yaml": {
+            "scenarios": [
+                {"id": "S1_open_zone", "description": "Open zone with sparse human interaction"},
+                {"id": "S2_crossing_human", "description": "Single human crossing the robot path"},
+                {"id": "S3_corridor", "description": "Constrained corridor navigation"},
+                {"id": "S4_occlusion", "description": "Human detection with partial occlusion"},
+                {"id": "S5_dense_dynamic", "description": "Multiple dynamic humans"},
+            ],
+        },
+    }
+    for relative, payload in metadata_files.items():
+        path = DATASET_BASE_PATH / relative
+        if not path.exists():
+            path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    for split_name in ("train_runs.txt", "val_runs.txt", "test_runs.txt"):
+        path = DATASET_BASE_PATH / "metadata" / "splits" / split_name
+        if not path.exists():
+            path.write_text("", encoding="utf-8")
+
+
+def _ensure_csv_header(path: Path, fields: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size > 0:
+        return
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+
+
+def _dataset_artifact_status() -> dict:
+    expected_files = [
+        "metadata/run_index.csv",
+        "metadata/sensors.yaml",
+        "metadata/robot_mecanum.yaml",
+        "metadata/controllers.yaml",
+        "metadata/scenarios.yaml",
+        "derived/controller_timeseries.csv",
+        "derived/human_states.csv",
+        "derived/human_prediction.csv",
+        "derived/metrics_per_run.csv",
+        "derived/metrics_summary.csv",
+        "derived/adaptation_timeseries.csv",
+    ]
+    return {
+        "base_path": str(DATASET_BASE_PATH),
+        "required_topics": DATASET_REQUIRED_TOPICS,
+        "optional_camera_topics": DATASET_CAMERA_TOPICS,
+        "files": {
+            relative: (DATASET_BASE_PATH / relative).exists()
+            for relative in expected_files
+        },
+    }
+
+
+def _run_index_row(metadata: dict) -> dict:
+    robot_start = metadata.get("robot_start", {}) or {}
+    goal = metadata.get("goal", {}) or {}
+    return {
+        "run_id": metadata.get("run_id", ""),
+        "scenario_id": metadata.get("scenario_id", ""),
+        "controller_id": metadata.get("controller_id", ""),
+        "environment": metadata.get("environment", ""),
+        "start_time": metadata.get("start_time", ""),
+        "end_time": metadata.get("end_time", ""),
+        "duration_sec": metadata.get("duration_sec", ""),
+        "bag_path": metadata.get("bag_path", ""),
+        "success": metadata.get("success", ""),
+        "collision": metadata.get("collision", ""),
+        "timeout": metadata.get("timeout", ""),
+        "intervention": metadata.get("intervention", ""),
+        "random_seed": metadata.get("random_seed", ""),
+        "robot_start_x": robot_start.get("x", ""),
+        "robot_start_y": robot_start.get("y", ""),
+        "robot_start_theta": robot_start.get("theta", ""),
+        "goal_x": goal.get("x", ""),
+        "goal_y": goal.get("y", ""),
+        "goal_theta": goal.get("theta", ""),
+        "human_behavior": metadata.get("human_behavior", ""),
+        "notes": metadata.get("notes", ""),
+    }
+
+
+def _upsert_run_index(row: dict) -> None:
+    path = DATASET_BASE_PATH / "metadata" / "run_index.csv"
+    _ensure_csv_header(path, RUN_INDEX_FIELDS)
+    rows = []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = [item for item in reader if item.get("run_id") != row.get("run_id")]
+    rows.append({field: row.get(field, "") for field in RUN_INDEX_FIELDS})
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RUN_INDEX_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _start_rosbag_record(rosbag_path: Path, log_path: Path, record_camera: bool) -> subprocess.Popen:
+    topics = DATASET_REQUIRED_TOPICS + (DATASET_CAMERA_TOPICS if record_camera else [])
+    rosbag_path.parent.mkdir(parents=True, exist_ok=True)
+    command = ["ros2", "bag", "record", "-o", str(rosbag_path), *topics]
+    kwargs = {}
+    if hasattr(os, "setsid"):
+        kwargs["preexec_fn"] = os.setsid
+    log_handle = log_path.open("a", encoding="utf-8")
+    log_handle.write(f"$ {' '.join(command)}\n")
+    log_handle.flush()
+    try:
+        return subprocess.Popen(
+            command,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            env=_ros_runtime_env(),
+            **kwargs,
+        )
+    except Exception:
+        log_handle.close()
+        raise
+
+
+def _stop_rosbag_record(process: Optional[subprocess.Popen]) -> dict:
+    if process is None:
+        return {"status": "stopped", "message": "no rosbag process"}
+    if process.poll() is not None:
+        return {"status": "stopped", "returncode": process.returncode}
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(os.getpgid(process.pid), signal.SIGINT)
+        else:
+            process.send_signal(signal.SIGINT)
+        process.wait(timeout=10.0)
+        return {"status": "stopped", "returncode": process.returncode}
+    except subprocess.TimeoutExpired:
+        if hasattr(os, "killpg"):
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        else:
+            process.terminate()
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            if hasattr(os, "killpg"):
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            else:
+                process.kill()
+            process.wait(timeout=2.0)
+        return {"status": "forced_stop", "returncode": process.returncode}
+
+
+def _dataset_pipeline_commands(request: DatasetPipelineRequest) -> list[list[str]]:
+    python = os.getenv("PYTHON", "python3")
+    dataset = str(DATASET_BASE_PATH)
+    bag_path = request.bag_path
+
+    scripts = {
+        "validate": [[python, "scripts/dataset/validate_bag.py", "--dataset", dataset, *(["--bag", bag_path] if bag_path else [])]],
+        "bag_to_csv": [
+            [python, "scripts/dataset/bag_to_csv.py", "--dataset", dataset, *(["--bag", bag_path] if bag_path else [])],
+            [python, "scripts/dataset/extract_controller_timeseries.py", "--dataset", dataset, *(["--bag", bag_path] if bag_path else [])],
+            [python, "scripts/dataset/extract_human_states.py", "--dataset", dataset, *(["--bag", bag_path] if bag_path else [])],
+        ],
+        "metrics": [
+            [python, "scripts/dataset/build_run_index.py", "--dataset", dataset],
+            [python, "scripts/dataset/extract_metrics.py", "--dataset", dataset],
+        ],
+        "plots": [
+            [python, "scripts/plot/plot_timeseries.py", "--dataset", dataset],
+            [python, "scripts/plot/plot_trajectories.py", "--dataset", dataset],
+            [python, "scripts/plot/plot_boxplots.py", "--dataset", dataset],
+            [python, "scripts/plot/plot_latency.py", "--dataset", dataset],
+        ],
+        "tables": [[python, "scripts/tables/make_latex_tables.py", "--dataset", dataset]],
+    }
+    if request.action == "all":
+        return scripts["validate"] + scripts["bag_to_csv"] + scripts["metrics"] + scripts["plots"] + scripts["tables"]
+    return scripts[request.action]
+
+
+def _run_pipeline_command(command: list[str]) -> dict:
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd="/home/rai/ijat2026",
+            text=True,
+            capture_output=True,
+            timeout=600,
+            env=_ros_runtime_env(),
+        )
+        return {
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout[-4000:],
+            "stderr": completed.stderr[-4000:],
+            "duration_sec": round(time.monotonic() - started, 3),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": command,
+            "returncode": 124,
+            "stdout": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
+            "stderr": "Pipeline command timed out",
+            "duration_sec": round(time.monotonic() - started, 3),
+        }
 
 
 async def _get_or_create_scenario(db: AsyncSession, scenario_name: str) -> DatasetScenario:

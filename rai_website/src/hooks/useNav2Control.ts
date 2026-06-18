@@ -21,7 +21,7 @@ export interface Nav2ControlRuntime {
 }
 
 const DEFAULT_NAV2_CONFIG: Nav2Config = {
-  local_planner: "CA_NMPC",
+  local_planner: "CCA_NMPC",
   global_planner: "A_STAR",
   map_path: "",
   running: false,
