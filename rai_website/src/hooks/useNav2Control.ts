@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { readSelectedMapId, writeSelectedMapId } from "@/lib/map-selection";
-import type { Nav2Config, Nav2Option } from "@/types/robot-runtime";
+import type { Nav2Config, Nav2Option, SystemRuntime } from "@/types/robot-runtime";
 
 export interface Nav2ControlRuntime {
   busy: boolean;
   message: string;
+  systemRuntime: SystemRuntime | null;
   nav2Config: Nav2Config;
   nav2Maps: Array<{ id?: number; name?: string; yaml_path?: string | null }>;
   selectedMapId: string;
@@ -30,6 +31,7 @@ const DEFAULT_NAV2_CONFIG: Nav2Config = {
 export function useNav2Control(): Nav2ControlRuntime {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Waiting for Nav2 state.");
+  const [systemRuntime, setSystemRuntime] = useState<SystemRuntime | null>(null);
   const [nav2Config, setNav2Config] = useState<Nav2Config>(DEFAULT_NAV2_CONFIG);
   const [nav2Maps, setNav2Maps] = useState<Array<{ id?: number; name?: string; yaml_path?: string | null }>>([]);
   const [selectedMapId, setSelectedMapId] = useState("");
@@ -38,6 +40,18 @@ export function useNav2Control(): Nav2ControlRuntime {
 
   const loadNav2State = useCallback(async () => {
     try {
+      const runtimeResponse = await fetchWithAuth("/api/system/runtime");
+      const runtime = (await runtimeResponse.json()) as SystemRuntime;
+      setSystemRuntime(runtime);
+      if (!runtime.allowed_actions.includes("nav2")) {
+        setNav2Maps([]);
+        setSelectedMapId("");
+        setNav2LocalOptions([]);
+        setNav2GlobalOptions([]);
+        setNav2Config(DEFAULT_NAV2_CONFIG);
+        setMessage(`Nav2 control is disabled on ${runtime.device_label} (${runtime.device_role}).`);
+        return;
+      }
       const [optionsResponse, configResponse, mapsResponse] = await Promise.all([
         fetchWithAuth("/api/nav2/options"),
         fetchWithAuth("/api/nav2/config"),
@@ -164,6 +178,7 @@ export function useNav2Control(): Nav2ControlRuntime {
   return {
     busy,
     message,
+    systemRuntime,
     nav2Config,
     nav2Maps,
     selectedMapId,

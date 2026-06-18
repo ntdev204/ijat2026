@@ -8,6 +8,7 @@ from _common import ensure_layout, parser, print_json
 
 REQUIRED_TOPICS = {
     "/scan", "/scan_filtered", "/odom", "/imu/data_raw", "/tf", "/tf_static", "/cmd_vel",
+    "/cmd_vel_web",
     "/cca_nmpc/cmd_vel", "/canmpc/context", "/canmpc/humans", "/canmpc/adaptive_bounds",
     "/canmpc/predicted_trajectory", "/canmpc/local_reference_path", "/canmpc/solver_stats",
     "/local_costmap/costmap", "/local_costmap/published_footprint",

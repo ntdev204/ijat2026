@@ -42,9 +42,10 @@ const CONTROLLERS = [
 
 export default function DatasetPage() {
   const dataset = useDatasetRuntime();
-  const { active, artifacts, busy, form, message, pipeline, runs, scenarios } = dataset;
+  const { active, artifacts, busy, form, message, pipeline, runs, scenarios, systemRuntime } = dataset;
   const artifactReady = artifacts ? Object.values(artifacts.files).filter(Boolean).length : 0;
   const artifactTotal = artifacts ? Object.keys(artifacts.files).length : 0;
+  const datasetAllowed = systemRuntime?.allowed_actions.includes("dataset") ?? true;
 
   return (
     <div className="space-y-6">
@@ -52,6 +53,11 @@ export default function DatasetPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-800">Dataset Collection</h2>
           <p className="mt-1 text-sm text-slate-500">Record rosbag2 runs and build CCA predictive-control paper artifacts.</p>
+          {systemRuntime && (
+            <p className="mt-1 text-xs text-slate-500">
+              API target: {systemRuntime.device_label} ({systemRuntime.device_role})
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={active.active ? "success" : "default"}>
@@ -137,19 +143,24 @@ export default function DatasetPage() {
             Recording Control
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => void dataset.prepareDataset()} disabled={busy || active.active} className="gap-2">
+            <Button type="button" variant="outline" onClick={() => void dataset.prepareDataset()} disabled={busy || !datasetAllowed || active.active} className="gap-2">
               <FolderTree className="h-4 w-4" />
               Prepare folders
             </Button>
-            <Button type="button" onClick={() => void dataset.startDataset()} disabled={busy || active.active} className="gap-2">
+            <Button type="button" onClick={() => void dataset.startDataset()} disabled={busy || !datasetAllowed || active.active} className="gap-2">
               <Play className="h-4 w-4" />
               Start bag
             </Button>
-            <Button type="button" variant="outline" onClick={() => void dataset.stopDataset()} disabled={busy || !active.active} className="gap-2">
+            <Button type="button" variant="outline" onClick={() => void dataset.stopDataset()} disabled={busy || !datasetAllowed || !active.active} className="gap-2">
               <Square className="h-4 w-4" />
               Stop
             </Button>
           </div>
+          {!datasetAllowed && systemRuntime && (
+            <p className="mt-4 text-sm text-amber-600">
+              Dataset controls are Pi-only. This web session is targeting {systemRuntime.device_label} ({systemRuntime.device_role}).
+            </p>
+          )}
 
           {active.run && (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -188,12 +199,12 @@ export default function DatasetPage() {
           Processing Pipeline
         </div>
         <div className="flex flex-wrap gap-2">
-          <PipelineButton icon={<CheckCircle2 className="h-4 w-4" />} label="Validate" busy={busy} onClick={() => void dataset.runPipeline("validate")} />
-          <PipelineButton icon={<FileText className="h-4 w-4" />} label="Bag to CSV" busy={busy} onClick={() => void dataset.runPipeline("bag_to_csv")} />
-          <PipelineButton icon={<BarChart3 className="h-4 w-4" />} label="Metrics" busy={busy} onClick={() => void dataset.runPipeline("metrics")} />
-          <PipelineButton icon={<LineChart className="h-4 w-4" />} label="Figures" busy={busy} onClick={() => void dataset.runPipeline("plots")} />
-          <PipelineButton icon={<Table2 className="h-4 w-4" />} label="Tables" busy={busy} onClick={() => void dataset.runPipeline("tables")} />
-          <PipelineButton icon={<Database className="h-4 w-4" />} label="Run all" busy={busy} primary onClick={() => void dataset.runPipeline("all")} />
+          <PipelineButton icon={<CheckCircle2 className="h-4 w-4" />} label="Validate" busy={busy || !datasetAllowed} onClick={() => void dataset.runPipeline("validate")} />
+          <PipelineButton icon={<FileText className="h-4 w-4" />} label="Bag to CSV" busy={busy || !datasetAllowed} onClick={() => void dataset.runPipeline("bag_to_csv")} />
+          <PipelineButton icon={<BarChart3 className="h-4 w-4" />} label="Metrics" busy={busy || !datasetAllowed} onClick={() => void dataset.runPipeline("metrics")} />
+          <PipelineButton icon={<LineChart className="h-4 w-4" />} label="Figures" busy={busy || !datasetAllowed} onClick={() => void dataset.runPipeline("plots")} />
+          <PipelineButton icon={<Table2 className="h-4 w-4" />} label="Tables" busy={busy || !datasetAllowed} onClick={() => void dataset.runPipeline("tables")} />
+          <PipelineButton icon={<Database className="h-4 w-4" />} label="Run all" busy={busy || !datasetAllowed} primary onClick={() => void dataset.runPipeline("all")} />
         </div>
         {pipeline && (
           <div className="mt-4 overflow-auto rounded-md border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700">

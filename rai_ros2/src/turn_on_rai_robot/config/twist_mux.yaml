@@ -1,0 +1,12 @@
+twist_mux:
+  ros__parameters:
+    topics:
+      web:
+        topic: /cmd_vel_web
+        timeout: 0.5
+        priority: 100
+      ccanmpc:
+        topic: /cca_nmpc/cmd_vel
+        timeout: 0.5
+        priority: 50
+    locks: {}

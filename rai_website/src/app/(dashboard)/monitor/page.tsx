@@ -31,6 +31,11 @@ export default function MonitorPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-800">Monitor</h2>
           <p className="mt-1 text-sm text-slate-500">Video stream, realtime map, planner traces, and route control.</p>
+          {nav2.systemRuntime && (
+            <p className="mt-1 text-xs text-slate-500">
+              API target: {nav2.systemRuntime.device_label} ({nav2.systemRuntime.device_role})
+            </p>
+          )}
         </div>
         <StatusBadge status={live ? "success" : state === "error" ? "error" : "warning"}>
           {live ? "LIVE" : state.toUpperCase()}
@@ -75,6 +80,7 @@ export default function MonitorPage() {
       <Nav2PlannerPanel
         busy={nav2.busy}
         message={nav2.message}
+        systemRuntime={nav2.systemRuntime}
         nav2Config={nav2.nav2Config}
         nav2Maps={nav2.nav2Maps}
         selectedMapId={nav2.selectedMapId}

@@ -25,7 +25,9 @@ export default function MapPage() {
     startSlam,
     status,
     stopSlam,
+    systemRuntime,
   } = runtime;
+  const slamAllowed = systemRuntime?.allowed_actions.includes("slam") ?? true;
 
   return (
     <div className="space-y-5">
@@ -35,6 +37,11 @@ export default function MapPage() {
           <p className="text-sm text-slate-500">
             {currentMap ? `${currentMap.width}x${currentMap.height} @ ${currentMap.resolution}m` : status}
           </p>
+          {systemRuntime && (
+            <p className="mt-1 text-xs text-slate-500">
+              API target: {systemRuntime.device_label} ({systemRuntime.device_role})
+            </p>
+          )}
         </div>
         <Button variant="outline" className="gap-2" disabled={busy} onClick={() => void loadMaps()}>
           <RefreshCw className="size-4" />
@@ -67,7 +74,7 @@ export default function MapPage() {
         </section>
 
         <aside className="space-y-4">
-          <SlamPanel busy={busy} slamRunning={slamRunning} startSlam={startSlam} stopSlam={stopSlam} />
+          <SlamPanel busy={busy} slamAllowed={slamAllowed} slamRunning={slamRunning} startSlam={startSlam} stopSlam={stopSlam} />
           <SaveMapPanel busy={busy} mapName={mapName} status={status} setMapName={setMapName} saveMap={saveMap} />
           <SavedMapsPanel
             busy={busy}
@@ -84,27 +91,32 @@ export default function MapPage() {
 
 interface SlamPanelProps {
   busy: boolean;
+  slamAllowed: boolean;
   slamRunning: boolean;
   startSlam: () => Promise<void>;
   stopSlam: () => Promise<void>;
 }
 
-function SlamPanel({ busy, slamRunning, startSlam, stopSlam }: SlamPanelProps) {
+function SlamPanel({ busy, slamAllowed, slamRunning, startSlam, stopSlam }: SlamPanelProps) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">SLAM / Scan</h3>
       <div className="flex gap-2">
-        <Button type="button" className="gap-2" disabled={busy || slamRunning} onClick={() => void startSlam()}>
+        <Button type="button" className="gap-2" disabled={busy || !slamAllowed || slamRunning} onClick={() => void startSlam()}>
           <Radar className="size-4" />
           Start SLAM
         </Button>
-        <Button type="button" variant="outline" className="gap-2" disabled={busy || !slamRunning} onClick={() => void stopSlam()}>
+        <Button type="button" variant="outline" className="gap-2" disabled={busy || !slamAllowed || !slamRunning} onClick={() => void stopSlam()}>
           <Square className="size-4" />
           Stop
         </Button>
       </div>
       <p className="mt-3 text-sm text-slate-500">
-        {slamRunning ? "SLAM is running. Watch the live map update before saving." : "Start SLAM to scan and update the live map."}
+        {!slamAllowed
+          ? "SLAM controls are only available when the web UI targets the Pi API."
+          : slamRunning
+            ? "SLAM is running. Watch the live map update before saving."
+            : "Start SLAM to scan and update the live map."}
       </p>
     </section>
   );

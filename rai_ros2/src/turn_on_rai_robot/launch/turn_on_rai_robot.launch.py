@@ -36,6 +36,9 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rai_ekf.launch.py')),
             launch_arguments={'carto_slam':carto_slam}.items(),            
     )
+    twist_mux = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(launch_dir, 'twist_mux.launch.py')),
+    )
     #Modify the z-axis transformation parameters of the base_to_link node according to the vehicle model:
     #(r3s_mec,0.02027), (r3s_4wd,0.01463), 
     #(mini_akm,0.0216), (mini_diff,0.01563),(mini_tank,0.03715), (mini_mec,0.07258), (mini_omni,0.06542), (mini_4wd,0.0682),
@@ -99,6 +102,8 @@ def generate_launch_description():
     )
     
     ld = LaunchDescription()
+    ld.add_action(SetEnvironmentVariable('RAI_DEVICE_ROLE', 'pi'))
+    ld.add_action(SetEnvironmentVariable('RAI_DEVICE_LABEL', 'raspberry_pi_4'))
 
     ld.add_action(minibot_type)
     #ld.add_action(flagship_type)
@@ -109,6 +114,6 @@ def generate_launch_description():
     ld.add_action(joint_state_publisher_node)
     ld.add_action(imu_filter_node)    
     ld.add_action(robot_ekf)
+    ld.add_action(twist_mux)
 
     return ld
-

@@ -6,6 +6,7 @@ required_topics:
   - /tf
   - /tf_static
   - /cmd_vel
+  - /cmd_vel_web
   - /cca_nmpc/cmd_vel
   - /canmpc/context
   - /canmpc/humans

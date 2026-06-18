@@ -36,6 +36,9 @@ def generate_launch_description():
         executable='web_api',
         name='rai_web_api',
         output='screen',
+        parameters=[
+            {'cmd_vel_topic': '/cmd_vel_web'},
+        ],
         additional_env={
             'RAI_API_HOST': LaunchConfiguration('host'),
             'RAI_API_PORT': LaunchConfiguration('port'),

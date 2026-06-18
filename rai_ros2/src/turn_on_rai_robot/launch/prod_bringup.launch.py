@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -12,6 +12,8 @@ def generate_launch_description():
     rai_slam_dir = get_package_share_directory('rai_slam_toolbox')
 
     return LaunchDescription([
+        SetEnvironmentVariable('RAI_DEVICE_ROLE', 'pi'),
+        SetEnvironmentVariable('RAI_DEVICE_LABEL', 'raspberry_pi_4'),
         # 1. Base Hardware Layer (Chassis, Lidar, IMU, EKF, TF)
         TimerAction(
             period=5.0,
@@ -37,6 +39,19 @@ def generate_launch_description():
                     parameters=[
                         os.path.join(rai_slam_dir, 'config', 'laser_filter.yaml')
                     ],
+                ),
+            ]
+        ),
+
+        # 2. Velocity arbitration layer. All high-level sources publish to dedicated
+        # topics and twist_mux is the single owner of /cmd_vel to the base driver.
+        TimerAction(
+            period=7.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(
+                        os.path.join(rai_launch_dir, 'launch', 'twist_mux.launch.py')
+                    )
                 ),
             ]
         ),

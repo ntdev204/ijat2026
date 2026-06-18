@@ -3,12 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { DropdownField } from "@/components/ui/dropdown-field";
 import { Input } from "@/components/ui/input";
-import type { Nav2Config, Nav2Option } from "@/types/robot-runtime";
+import type { Nav2Config, Nav2Option, SystemRuntime } from "@/types/robot-runtime";
 import { Play, RefreshCw, Square } from "lucide-react";
 
 export interface Nav2PlannerPanelProps {
   busy: boolean;
   message?: string;
+  systemRuntime?: SystemRuntime | null;
   nav2Config: Nav2Config;
   nav2Maps: Array<{ id?: number; name?: string; yaml_path?: string | null }>;
   selectedMapId: string;
@@ -24,6 +25,7 @@ export interface Nav2PlannerPanelProps {
 export function Nav2PlannerPanel({
   busy,
   message,
+  systemRuntime,
   nav2Config,
   nav2Maps,
   selectedMapId,
@@ -36,6 +38,7 @@ export function Nav2PlannerPanel({
   stopNav2,
 }: Nav2PlannerPanelProps) {
   const hasSelectedMap = selectedMapId.length > 0;
+  const nav2Allowed = systemRuntime?.allowed_actions.includes("nav2") ?? true;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -61,7 +64,7 @@ export function Nav2PlannerPanel({
                 value: String(map.id),
                 label: map.name ?? `Map #${map.id}`,
               }))}
-            placeholder="Select saved map"
+            placeholder={nav2Allowed ? "Select saved map" : "Nav2 not available on this device"}
           />
         </label>
         <label className="block text-sm">
@@ -87,11 +90,11 @@ export function Nav2PlannerPanel({
       </div>
 
       <div className="mt-4 flex gap-2">
-        <Button type="button" className="gap-2" disabled={busy || nav2Config.running || !hasSelectedMap} onClick={() => void startNav2()}>
+        <Button type="button" className="gap-2" disabled={busy || !nav2Allowed || nav2Config.running || !hasSelectedMap} onClick={() => void startNav2()}>
           <Play className="size-4" />
           Start Nav2
         </Button>
-        <Button type="button" variant="outline" className="gap-2" disabled={busy || !nav2Config.running} onClick={() => void stopNav2()}>
+        <Button type="button" variant="outline" className="gap-2" disabled={busy || !nav2Allowed || !nav2Config.running} onClick={() => void stopNav2()}>
           <Square className="size-4" />
           Stop
         </Button>
@@ -100,6 +103,11 @@ export function Nav2PlannerPanel({
       <p className="mt-3 text-sm text-slate-500">
         Running: {nav2Config.running ? "yes" : "no"} | {nav2Config.local_planner} + {nav2Config.global_planner}
       </p>
+      {!nav2Allowed && systemRuntime && (
+        <p className="mt-2 text-sm text-amber-600">
+          This API is connected to {systemRuntime.device_label} ({systemRuntime.device_role}). Nav2 controls are Pi-only.
+        </p>
+      )}
       {!hasSelectedMap && <p className="mt-2 text-sm text-amber-600">Select a saved map before starting Nav2.</p>}
       {message && <p className="mt-2 text-sm text-slate-500">{message}</p>}
     </section>

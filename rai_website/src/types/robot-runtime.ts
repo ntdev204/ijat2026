@@ -41,6 +41,14 @@ export interface Nav2Config {
   running: boolean;
 }
 
+export interface SystemRuntime {
+  device_role: string;
+  device_label: string;
+  allowed_actions: string[];
+  api_host: string;
+  api_port: number;
+}
+
 export interface DatasetRun {
   id: number;
   run_name: string;

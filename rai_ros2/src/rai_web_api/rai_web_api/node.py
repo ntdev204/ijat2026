@@ -31,6 +31,7 @@ class WebBridgeNode(Node):
     def __init__(self):
         super().__init__('web_bridge_node')
         self.lock = threading.Lock()
+        self.cmd_vel_topic = self.declare_parameter("cmd_vel_topic", "/cmd_vel_web").value
 
         # Telemetry State (Thread-safe)
         self.telemetry = {
@@ -105,7 +106,7 @@ class WebBridgeNode(Node):
         )
 
         # Permanent Publishers/Clients
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.voltage_sub = self.create_subscription(
             Float32, '/PowerVoltage', self.voltage_callback, self.reliable_qos

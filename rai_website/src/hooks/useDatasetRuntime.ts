@@ -9,6 +9,7 @@ import type {
   DatasetRun,
   DatasetScenario,
   RuntimeEnvironment,
+  SystemRuntime,
 } from "@/types/robot-runtime";
 
 export interface DatasetFormState {
@@ -34,6 +35,7 @@ export interface DatasetFormState {
 
 export interface DatasetRuntime {
   active: ActiveDatasetPayload;
+  systemRuntime: SystemRuntime | null;
   artifacts: DatasetArtifactsPayload | null;
   pipeline: DatasetPipelineResult | null;
   runs: DatasetRun[];
@@ -87,6 +89,7 @@ function optionalNumber(value: string): number | null {
 
 export function useDatasetRuntime(): DatasetRuntime {
   const [active, setActive] = useState<ActiveDatasetPayload>(DEFAULT_ACTIVE);
+  const [systemRuntime, setSystemRuntime] = useState<SystemRuntime | null>(null);
   const [artifacts, setArtifacts] = useState<DatasetArtifactsPayload | null>(null);
   const [pipeline, setPipeline] = useState<DatasetPipelineResult | null>(null);
   const [runs, setRuns] = useState<DatasetRun[]>([]);
@@ -113,6 +116,18 @@ export function useDatasetRuntime(): DatasetRuntime {
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
+    const runtimeRes = await fetchWithAuth("/api/system/runtime");
+    const runtime = (await runtimeRes.json()) as SystemRuntime;
+    setSystemRuntime(runtime);
+    if (!runtime.allowed_actions.includes("dataset")) {
+      setActive(DEFAULT_ACTIVE);
+      setRuns([]);
+      setScenarios([]);
+      setArtifacts(null);
+      setMessage(`Dataset controls are disabled on ${runtime.device_label} (${runtime.device_role}).`);
+      return;
+    }
+
     const [activeRes, runsRes, scenariosRes, artifactsRes] = await Promise.all([
       fetchWithAuth("/api/dataset/active"),
       fetchWithAuth("/api/dataset/runs"),
@@ -260,6 +275,7 @@ export function useDatasetRuntime(): DatasetRuntime {
 
   return {
     active,
+    systemRuntime,
     artifacts,
     pipeline,
     runs,

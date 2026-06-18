@@ -36,6 +36,8 @@ logging.basicConfig(level=os.getenv("RAI_API_LOG_LEVEL", "INFO"))
 DATASET_BASE_PATH = Path(os.getenv("RAI_DATASET_PATH", "/home/rai/ijat2026/dataset")).expanduser()
 DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
+DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
+DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
 
 app = FastAPI(title="Rai Robot Web API", version="1.0.0")
 app.add_middleware(
@@ -62,6 +64,7 @@ DATASET_REQUIRED_TOPICS = [
     "/tf",
     "/tf_static",
     "/cmd_vel",
+    "/cmd_vel_web",
     "/cca_nmpc/cmd_vel",
     "/canmpc/context",
     "/canmpc/humans",
@@ -146,6 +149,12 @@ training_state = {
     "history": []
 }
 MAP_STORAGE_DIR = Path(os.getenv("RAI_MAP_STORAGE_DIR", "/home/rai/rai_ros2/data/map")).expanduser()
+
+ROLE_ALLOWED_ACTIONS = {
+    "pi": {"teleop", "nav2", "slam", "dataset", "maps"},
+    "jetson": {"controller"},
+}
+ALLOWED_ACTIONS = ROLE_ALLOWED_ACTIONS.get(DEVICE_ROLE, set())
 
 
 class WebRtcOffer(BaseModel):
@@ -299,6 +308,28 @@ def _ros_runtime_env() -> dict:
         env["FASTDDS_BUILTIN_TRANSPORTS"] = "UDPv4"
     env.setdefault("RCUTILS_LOGGING_BUFFERED_STREAM", "1")
     return env
+
+
+def _system_runtime_payload() -> dict:
+    return {
+        "device_role": DEVICE_ROLE,
+        "device_label": DEVICE_LABEL,
+        "allowed_actions": sorted(ALLOWED_ACTIONS),
+        "api_host": DEFAULT_HOST,
+        "api_port": DEFAULT_PORT,
+    }
+
+
+def _require_action(action: str) -> None:
+    if action in ALLOWED_ACTIONS:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"Action '{action}' is not allowed on device role '{DEVICE_ROLE}'. "
+            f"Allowed actions here: {', '.join(sorted(ALLOWED_ACTIONS)) or 'none'}."
+        ),
+    )
 
 
 def _start_process(command: str, env: Optional[dict] = None) -> subprocess.Popen:
@@ -526,7 +557,7 @@ async def startup() -> None:
         nav2_runtime_config["params_path"] = str(_default_nav2_params_path())
     if not Path(nav2_runtime_config["map_path"]).exists():
         nav2_runtime_config["map_path"] = ""
-    logger.info("Rai Web API started on robot.")
+    logger.info("Rai Web API started on robot with role=%s label=%s.", DEVICE_ROLE, DEVICE_LABEL)
 
 
 @app.on_event("shutdown")
@@ -551,7 +582,12 @@ async def shutdown() -> None:
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat(), **_system_runtime_payload()}
+
+
+@app.get("/api/system/runtime")
+async def system_runtime() -> dict:
+    return _system_runtime_payload()
 
 
 @app.get("/api/telemetry/current")
@@ -616,6 +652,9 @@ async def map_ws(websocket: WebSocket) -> None:
     if bridge_node is None:
         await websocket.close(code=1011)
         return
+    if "maps" not in ALLOWED_ACTIONS:
+        await websocket.close(code=1008, reason=f"maps not allowed on {DEVICE_ROLE}")
+        return
 
     bridge_node.ensure_map_subscription()
     await websocket.accept()
@@ -665,6 +704,9 @@ async def dataset_ws(websocket: WebSocket) -> None:
     if bridge_node is None:
         await websocket.close(code=1011)
         return
+    if "dataset" not in ALLOWED_ACTIONS:
+        await websocket.close(code=1008, reason=f"dataset not allowed on {DEVICE_ROLE}")
+        return
 
     await websocket.accept()
     bridge_node.register_telemetry_client()
@@ -684,6 +726,9 @@ async def control_ws(websocket: WebSocket) -> None:
     if bridge_node is None:
         await websocket.close(code=1011)
         return
+    if "teleop" not in ALLOWED_ACTIONS:
+        await websocket.close(code=1008, reason=f"teleop not allowed on {DEVICE_ROLE}")
+        return
 
     await websocket.accept()
     try:
@@ -698,6 +743,7 @@ async def control_ws(websocket: WebSocket) -> None:
 
 @app.post("/api/robot/cmd_vel")
 async def publish_cmd_vel(command: VelocityCommand) -> dict:
+    _require_action("teleop")
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
     bridge_node.publish_cmd_vel(command.linear_x, command.linear_y, command.angular_z)
@@ -781,6 +827,7 @@ async def send_home_goal() -> dict:
 
 @app.get("/api/nav2/options")
 async def nav2_options() -> dict:
+    _require_action("nav2")
     return {
         "local_planners": NAV2_LOCAL_PLANNER_OPTIONS,
         "global_planners": NAV2_GLOBAL_PLANNER_OPTIONS,
@@ -789,6 +836,7 @@ async def nav2_options() -> dict:
 
 @app.get("/api/nav2/config")
 async def nav2_config() -> dict:
+    _require_action("nav2")
     global nav2_process
     return {
         **nav2_runtime_config,
@@ -798,6 +846,7 @@ async def nav2_config() -> dict:
 
 @app.post("/api/nav2/config")
 async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("nav2")
     local_planner = request.local_planner.upper()
     global_planner = request.global_planner.upper()
     if local_planner not in {item["id"] for item in NAV2_LOCAL_PLANNER_OPTIONS}:
@@ -826,6 +875,7 @@ async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends
 
 @app.post("/api/nav2/start")
 async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("nav2")
     global nav2_process
     if nav2_process is not None and nav2_process.poll() is None:
         return {"success": True, "message": "Nav2 is already running", **(await nav2_config())}
@@ -874,6 +924,7 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
 
 @app.post("/api/nav2/stop")
 async def stop_nav2_stack() -> dict:
+    _require_action("nav2")
     global nav2_process
     result = _stop_stack_process(nav2_process, NAV2_KILL_PATTERNS)
     nav2_process = None
@@ -885,6 +936,7 @@ async def stop_nav2_stack() -> dict:
 
 @app.post("/api/robot/slam/start")
 async def start_slam() -> dict:
+    _require_action("slam")
     global slam_process
     if slam_process is not None and slam_process.poll() is None:
         return {"success": True, "message": "SLAM is already running"}
@@ -906,6 +958,7 @@ async def start_slam() -> dict:
 
 @app.post("/api/robot/slam/stop")
 async def stop_slam() -> dict:
+    _require_action("slam")
     global slam_process
     result = _stop_stack_process(slam_process, SLAM_KILL_PATTERNS)
     slam_process = None
@@ -917,6 +970,7 @@ async def stop_slam() -> dict:
 
 @app.post("/api/map/save")
 async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("maps")
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
 
@@ -972,6 +1026,7 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
 
 @app.get("/api/map/list")
 async def list_maps(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    _require_action("maps")
     result = await db.execute(select(SavedMap).order_by(desc(SavedMap.created_at)))
     maps = result.scalars().all()
     return [_saved_map_summary(saved_map) for saved_map in maps]
@@ -979,6 +1034,7 @@ async def list_maps(db: AsyncSession = Depends(get_db)) -> list[dict]:
 
 @app.get("/api/map/{map_id}")
 async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("maps")
     saved_map = await db.get(SavedMap, map_id)
     if saved_map is None:
         raise HTTPException(status_code=404, detail="Saved map not found")
@@ -987,6 +1043,7 @@ async def get_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
 
 @app.patch("/api/map/{map_id}")
 async def update_map(map_id: int, request: UpdateMapRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("maps")
     saved_map = await db.get(SavedMap, map_id)
     if saved_map is None:
         raise HTTPException(status_code=404, detail="Saved map not found")
@@ -998,6 +1055,7 @@ async def update_map(map_id: int, request: UpdateMapRequest, db: AsyncSession = 
 
 @app.delete("/api/map/{map_id}")
 async def delete_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("maps")
     saved_map = await db.get(SavedMap, map_id)
     if saved_map is None:
         raise HTTPException(status_code=404, detail="Saved map not found")
@@ -1012,6 +1070,7 @@ async def delete_map(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
 
 @app.post("/api/map/{map_id}/delete")
 async def delete_map_post(map_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("maps")
     return await delete_map(map_id, db)
 
 
@@ -1094,18 +1153,21 @@ async def _simulate_training_job(epochs: int) -> None:
 
 @app.get("/api/dataset/artifacts")
 async def dataset_artifacts() -> dict:
+    _require_action("dataset")
     _ensure_dataset_layout()
     return _dataset_artifact_status()
 
 
 @app.post("/api/dataset/prepare")
 async def prepare_dataset_artifacts() -> dict:
+    _require_action("dataset")
     _ensure_dataset_layout()
     return {"success": True, **_dataset_artifact_status()}
 
 
 @app.post("/api/dataset/pipeline")
 async def run_dataset_pipeline(request: DatasetPipelineRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("dataset")
     _ensure_dataset_layout()
     if request.run_id and not request.bag_path:
         run = await db.get(DatasetRun, request.run_id)
@@ -1132,6 +1194,7 @@ async def run_dataset_pipeline(request: DatasetPipelineRequest, db: AsyncSession
 
 @app.post("/api/dataset/start")
 async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("dataset")
     global active_dataset_run_id, dataset_bag_process
     if active_dataset_run_id is not None:
         raise HTTPException(status_code=409, detail="A dataset run is already active")
@@ -1266,11 +1329,13 @@ async def start_dataset(request: DatasetStartRequest, db: AsyncSession = Depends
 
 @app.get("/api/dataset/active")
 async def active_dataset() -> dict:
+    _require_action("dataset")
     return await _active_dataset_payload()
 
 
 @app.post("/api/dataset/stop")
 async def stop_dataset(background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("dataset")
     global active_dataset_run_id, dataset_bag_process
     if active_dataset_run_id is None:
         raise HTTPException(status_code=409, detail="No active dataset run")
@@ -1339,6 +1404,7 @@ async def stop_dataset(background_tasks: BackgroundTasks, db: AsyncSession = Dep
 
 @app.get("/api/dataset/runs")
 async def list_dataset_runs(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    _require_action("dataset")
     result = await db.execute(select(DatasetRun).order_by(desc(DatasetRun.start_time)).limit(100))
     runs = result.scalars().all()
     payload = []
@@ -1376,6 +1442,7 @@ async def list_dataset_runs(db: AsyncSession = Depends(get_db)) -> list[dict]:
 
 @app.get("/api/dataset/runs/{run_id}/metrics")
 async def get_dataset_run_metrics(run_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("dataset")
     run = await db.get(DatasetRun, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Dataset run not found")
@@ -1389,6 +1456,7 @@ async def get_dataset_run_metrics(run_id: int, db: AsyncSession = Depends(get_db
 
 @app.get("/api/dataset/scenarios")
 async def list_dataset_scenarios(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    _require_action("dataset")
     result = await db.execute(select(DatasetScenario).order_by(DatasetScenario.name))
     scenarios = result.scalars().all()
     return [
@@ -1407,6 +1475,7 @@ async def list_dataset_scenarios(db: AsyncSession = Depends(get_db)) -> list[dic
 
 @app.get("/api/dataset/download/{run_id}")
 async def download_dataset(run_id: int, db: AsyncSession = Depends(get_db)) -> FileResponse:
+    _require_action("dataset")
     run = await db.get(DatasetRun, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Dataset run not found")

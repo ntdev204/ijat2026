@@ -6,10 +6,11 @@ import { fetchWithAuth } from "@/lib/api";
 import { drawOccupancyMap } from "@/lib/map-canvas";
 import { writeSelectedMapId } from "@/lib/map-selection";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
-import type { MapPayload } from "@/types/robot-runtime";
+import type { MapPayload, SystemRuntime } from "@/types/robot-runtime";
 
 export interface MapNavigationRuntime {
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  systemRuntime: SystemRuntime | null;
   maps: MapPayload[];
   currentMap: MapPayload | null;
   mapName: string;
@@ -29,6 +30,7 @@ export interface MapNavigationRuntime {
 export function useMapNavigation(): MapNavigationRuntime {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [maps, setMaps] = useState<MapPayload[]>([]);
+  const [systemRuntime, setSystemRuntime] = useState<SystemRuntime | null>(null);
   const [currentMap, setCurrentMap] = useState<MapPayload | null>(null);
   const [mapName, setMapName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,6 +61,15 @@ export function useMapNavigation(): MapNavigationRuntime {
 
   const loadMaps = useCallback(async () => {
     try {
+      const runtimeResponse = await fetchWithAuth("/api/system/runtime");
+      const runtime = (await runtimeResponse.json()) as SystemRuntime;
+      setSystemRuntime(runtime);
+      if (!runtime.allowed_actions.includes("maps")) {
+        setMaps([]);
+        setCurrentMap(null);
+        setStatus(`Map/SLAM controls are disabled on ${runtime.device_label} (${runtime.device_role}).`);
+        return;
+      }
       const response = await fetchWithAuth("/api/map/list");
       const savedMaps = (await response.json()) as MapPayload[];
       setMaps(savedMaps);
@@ -187,6 +198,7 @@ export function useMapNavigation(): MapNavigationRuntime {
 
   return {
     canvasRef,
+    systemRuntime,
     maps,
     currentMap,
     mapName,
