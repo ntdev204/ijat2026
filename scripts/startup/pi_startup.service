@@ -1,0 +1,18 @@
+[Unit]
+Description=RAI Raspberry Pi 4 Autostart Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rai
+WorkingDirectory=/home/rai/ijat2026
+ExecStart=/bin/bash /home/rai/ijat2026/scripts/startup/pi_startup.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rai-pi-startup
+
+[Install]
+WantedBy=multi-user.target
