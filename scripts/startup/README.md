@@ -89,3 +89,50 @@ sudo systemctl stop pi_startup.service
 # Restart service
 sudo systemctl restart pi_startup.service
 ```
+
+## Sửa lỗi thường gặp
+
+### Lỗi `AMENT_TRACE_SETUP_FILES: unbound variable`
+
+Lỗi này xảy ra khi script chạy với `set -u` và source file setup của ROS 2 trong systemd. Hai script startup hiện đã dùng `safe_source` để tạm tắt `nounset` khi source:
+
+```bash
+safe_source /opt/ros/humble/setup.bash
+safe_source /home/rai/ijat2026/rai_ros2/install/setup.bash
+```
+
+Sau khi cập nhật script, restart service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart jetson_startup.service
+sudo journalctl -u jetson_startup.service -f
+```
+
+Nếu service đang restart liên tục, dừng nó trước khi sửa/chạy lại:
+
+```bash
+sudo systemctl stop jetson_startup.service
+sudo systemctl reset-failed jetson_startup.service
+```
+
+### Lỗi `package 'twist_mux' not found`
+
+`twist_mux` cần có trên Pi để hợp nhất `/cmd_vel_web` và `/cca_nmpc/cmd_vel` thành `/cmd_vel`.
+
+Cài trên Pi:
+
+```bash
+sudo apt update
+sudo apt install ros-humble-twist-mux
+```
+
+Nếu package chưa được cài, `twist_mux.launch.py` sẽ bỏ qua node mux để không làm sập toàn bộ bringup. Tuy vậy, khi thiếu `twist_mux`, base driver vẫn nghe `/cmd_vel` nhưng web và controller đang publish vào topic nguồn riêng, nên robot sẽ chưa nhận được lệnh vận tốc qua mux.
+
+Sau khi cài:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/rai/ijat2026/rai_ros2/install/setup.bash
+ros2 launch turn_on_rai_robot twist_mux.launch.py
+```

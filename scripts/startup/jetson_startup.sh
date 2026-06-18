@@ -4,13 +4,20 @@
 # ==============================================================================
 set -euo pipefail
 
-# 1. Environment Setup
-source /opt/ros/humble/setup.bash
-source /home/rai/ijat2026/rai_ros2/install/setup.bash
-
-# 2. Core ROS 2 & RMW Configurations
+# 1. Core ROS 2 & RMW Configurations
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# ROS setup scripts read optional variables that may be unset under systemd.
+safe_source() {
+  set +u
+  source "$1"
+  set -u
+}
+
+# 2. Environment Setup
+safe_source /opt/ros/humble/setup.bash
+safe_source /home/rai/ijat2026/rai_ros2/install/setup.bash
 
 # 3. Device Specific Roles
 export RAI_DEVICE_ROLE=jetson
