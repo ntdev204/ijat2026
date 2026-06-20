@@ -22,7 +22,6 @@ target_include_directories(rai_planner_straight_line PUBLIC
 )
 
 ament_target_dependencies(rai_planner_straight_line rai_planner)
-target_link_libraries(rai_planner_straight_line rai_planner)
 
 install(
   TARGETS rai_planner_straight_line

@@ -22,7 +22,6 @@ target_include_directories(rai_planner_dijkstra PUBLIC
 )
 
 ament_target_dependencies(rai_planner_dijkstra rai_planner)
-target_link_libraries(rai_planner_dijkstra rai_planner)
 
 install(
   TARGETS rai_planner_dijkstra

@@ -22,7 +22,6 @@ target_include_directories(rai_planner_a_star PUBLIC
 )
 
 ament_target_dependencies(rai_planner_a_star rai_planner)
-target_link_libraries(rai_planner_a_star rai_planner)
 
 install(
   TARGETS rai_planner_a_star
