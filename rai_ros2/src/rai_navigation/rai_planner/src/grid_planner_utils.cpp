@@ -70,9 +70,10 @@ bool isMapCellBlocked(
   int y,
   const PlannerConfig & config)
 {
+  const double resolution = std::max(0.01, static_cast<double>(map.info.resolution));
   const int radius_cells = std::max(
     0,
-    static_cast<int>(std::ceil(config.inflation_radius / std::max(0.01, map.info.resolution))));
+    static_cast<int>(std::ceil(config.inflation_radius / resolution)));
   for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
     for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
       if (isRawMapCellBlocked(map, x + dx, y + dy, config)) {

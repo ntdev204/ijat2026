@@ -530,14 +530,12 @@ SolveResult CcanmpcCore::solve(
   geometry_msgs::msg::Twist best_command;
   nav_msgs::msg::Path best_path;
   best_path.header = result.predicted_trajectory.header;
-  bool timeout_break = false;
 
   for (const auto & candidate : candidates) {
         const double elapsed_ms =
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         if (elapsed_ms > std::max(1.0, params_.max_compute_time_ms - params_.timeout_margin_ms)) {
           result.timeout = true;
-          timeout_break = true;
           break;
         }
 
