@@ -23,8 +23,6 @@
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/empty.hpp"
 #include "std_srvs/srv/trigger.hpp"
-#include "tf2/LinearMath/Matrix3x3.h"
-#include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -198,17 +196,6 @@ private:
 std::unique_ptr<ControllerAlgorithm> createCcaNmpcAlgorithm(const ControllerConfig & config)
 {
   return std::make_unique<CcaNmpcAlgorithm>(config);
-}
-
-double yawFromPose(const geometry_msgs::msg::PoseStamped & pose)
-{
-  tf2::Quaternion q;
-  tf2::fromMsg(pose.pose.orientation, q);
-  double roll = 0.0;
-  double pitch = 0.0;
-  double yaw = 0.0;
-  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-  return yaw;
 }
 
 }  // namespace
@@ -1517,7 +1504,9 @@ private:
   {
     const double dx = robot_pose.pose.position.x - goal.pose.position.x;
     const double dy = robot_pose.pose.position.y - goal.pose.position.y;
-    const double yaw_error = normalizeAngle(yawFromPose(robot_pose) - yawFromPose(goal));
+    const double yaw_error = normalizeAngle(
+      rai_controller_cca_nmpc::yawFromPose(robot_pose) -
+      rai_controller_cca_nmpc::yawFromPose(goal));
     return std::hypot(dx, dy) <= goal_tolerance_xy_ && std::abs(yaw_error) <= goal_tolerance_yaw_;
   }
 
