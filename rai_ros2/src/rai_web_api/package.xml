@@ -19,6 +19,11 @@
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <exec_depend>python3-sqlalchemy</exec_depend>
+  <exec_depend>python3-aiortc</exec_depend>
+  <exec_depend>python3-av</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-zmq</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

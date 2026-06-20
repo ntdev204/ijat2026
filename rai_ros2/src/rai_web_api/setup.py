@@ -13,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'frontend'), glob('frontend/*')),
     ],
     install_requires=[
         'setuptools',
@@ -25,6 +26,7 @@ setup(
         'aiortc>=1.6.0',
         'av>=10.0.0',
         'numpy>=1.21.0',
+        'pyzmq>=25.0.0',
     ],
     zip_safe=True,
     maintainer='Nguyen Ngoc Thien',

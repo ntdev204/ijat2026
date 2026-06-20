@@ -22,6 +22,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +39,14 @@ DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
+SOURCE_FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+try:
+    PACKAGE_SHARE_DIR = Path(get_package_share_directory("rai_web_api")).resolve()
+except Exception:
+    PACKAGE_SHARE_DIR = SOURCE_FRONTEND_DIR.parent
+FRONTEND_DIR = PACKAGE_SHARE_DIR / "frontend"
+if not FRONTEND_DIR.exists():
+    FRONTEND_DIR = SOURCE_FRONTEND_DIR
 
 app = FastAPI(title="Rai Robot Web API", version="1.0.0")
 app.add_middleware(
@@ -47,6 +56,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="frontend_static")
 
 bridge_node: Optional[WebBridgeNode] = None
 spin_thread: Optional[threading.Thread] = None
@@ -1500,6 +1511,31 @@ async def download_dataset(run_id: int, db: AsyncSession = Depends(get_db)) -> F
         await db.commit()
 
     return FileResponse(path=zip_path, filename=zip_path.name, media_type="application/zip")
+
+
+@app.get("/")
+async def frontend_index() -> FileResponse:
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Frontend assets are not installed")
+    return FileResponse(index_path)
+
+
+@app.get("/{asset_name:path}")
+async def frontend_asset(asset_name: str) -> FileResponse:
+    if asset_name.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API route not found")
+
+    asset_path = (FRONTEND_DIR / asset_name).resolve()
+    if not FRONTEND_DIR.exists() or FRONTEND_DIR.resolve() not in asset_path.parents:
+        raise HTTPException(status_code=404, detail="Frontend asset not found")
+    if asset_path.is_file():
+        return FileResponse(asset_path)
+
+    index_path = FRONTEND_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Frontend assets are not installed")
 
 
 def _ensure_dataset_layout() -> None:

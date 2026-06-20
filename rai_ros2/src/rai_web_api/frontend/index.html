@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAI Robot Control Center</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">RAI</div>
+        <div>
+          <p class="eyebrow">Robot Control Center</p>
+          <h1>Light Ops Console</h1>
+        </div>
+      </div>
+      <section class="remote-config">
+        <div class="remote-config-head">
+          <p class="eyebrow">Remote Backend</p>
+          <strong>Ket noi Jetson</strong>
+        </div>
+        <form id="backend-config-form" class="config-form">
+          <label class="field">
+            <span>Backend URL</span>
+            <input id="backend-url-input" type="text" placeholder="http://192.168.1.50:8080">
+          </label>
+          <div class="action-row compact">
+            <button class="primary-button" type="submit">Ket noi</button>
+            <button class="ghost-button" id="backend-reset-button" type="button">Mac dinh</button>
+          </div>
+        </form>
+        <p class="muted remote-hint" id="backend-current-label">Dang dung cung origin hien tai.</p>
+      </section>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-footer">
+        <div class="status-dot" id="api-status-dot"></div>
+        <div>
+          <p class="muted">API</p>
+          <strong id="api-status-label">Đang kết nối...</strong>
+        </div>
+      </div>
+    </aside>
+    <div class="content-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="page-kicker">Realtime monitoring</p>
+          <h2 id="page-title">Trang trạng thái robot</h2>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="refresh-button" type="button">Làm mới</button>
+          <div class="clock-card">
+            <span class="muted">UTC</span>
+            <strong id="clock-label">--:--:--</strong>
+          </div>
+        </div>
+      </header>
+      <main id="app" class="page"></main>
+    </div>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
