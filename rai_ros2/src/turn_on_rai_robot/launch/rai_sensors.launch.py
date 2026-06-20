@@ -1,12 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, GroupAction,
-                            IncludeLaunchDescription, SetEnvironmentVariable)
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
-import launch_ros.actions
 
 #def launch(launch_descriptor, argv):
 def generate_launch_description():
@@ -17,15 +13,10 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'turn_on_rai_robot.launch.py')),
     )
 
-    camera_ros = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rai_camera.launch.py')),
-    )
-
     lidar_ros = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rai_lidar.launch.py')),
     )
 
     return LaunchDescription([
-        rai_robot, camera_ros, lidar_ros]
+        rai_robot, lidar_ros]
     )
-

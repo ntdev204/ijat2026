@@ -38,12 +38,15 @@ export function Nav2PlannerPanel({
   stopNav2,
 }: Nav2PlannerPanelProps) {
   const hasSelectedMap = selectedMapId.length > 0;
-  const nav2Allowed = systemRuntime?.allowed_actions.includes("nav2") ?? true;
+  const nav2Allowed =
+    systemRuntime?.allowed_actions.includes("navigation") ||
+    systemRuntime?.allowed_actions.includes("nav2") ||
+    !systemRuntime;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Nav2 Planner Selection</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">RAI Navigation</h3>
         {loadNav2State && (
           <Button type="button" variant="outline" size="sm" className="gap-2" disabled={busy} onClick={() => void loadNav2State()}>
             <RefreshCw className="size-4" />
@@ -54,7 +57,7 @@ export function Nav2PlannerPanel({
 
       <div className="grid gap-3">
         <label className="block text-sm">
-          <span className="text-xs font-medium text-slate-500">Nav2 map</span>
+          <span className="text-xs font-medium text-slate-500">Navigation map</span>
           <DropdownField
             value={selectedMapId}
             onValueChange={(value) => void selectNav2Map(value)}
@@ -64,7 +67,7 @@ export function Nav2PlannerPanel({
                 value: String(map.id),
                 label: map.name ?? `Map #${map.id}`,
               }))}
-            placeholder={nav2Allowed ? "Select saved map" : "Nav2 not available on this device"}
+            placeholder={nav2Allowed ? "Select saved map" : "RAI Navigation not available on this device"}
           />
         </label>
         <label className="block text-sm">
@@ -92,7 +95,7 @@ export function Nav2PlannerPanel({
       <div className="mt-4 flex gap-2">
         <Button type="button" className="gap-2" disabled={busy || !nav2Allowed || nav2Config.running || !hasSelectedMap} onClick={() => void startNav2()}>
           <Play className="size-4" />
-          Start Nav2
+          Start RAI Navigation
         </Button>
         <Button type="button" variant="outline" className="gap-2" disabled={busy || !nav2Allowed || !nav2Config.running} onClick={() => void stopNav2()}>
           <Square className="size-4" />
@@ -105,10 +108,10 @@ export function Nav2PlannerPanel({
       </p>
       {!nav2Allowed && systemRuntime && (
         <p className="mt-2 text-sm text-amber-600">
-          This API is connected to {systemRuntime.device_label} ({systemRuntime.device_role}). Nav2 controls are Pi-only.
+          This API is connected to {systemRuntime.device_label} ({systemRuntime.device_role}). RAI Navigation controls are Pi-only.
         </p>
       )}
-      {!hasSelectedMap && <p className="mt-2 text-sm text-amber-600">Select a saved map before starting Nav2.</p>}
+      {!hasSelectedMap && <p className="mt-2 text-sm text-amber-600">Select a saved map before starting RAI Navigation.</p>}
       {message && <p className="mt-2 text-sm text-slate-500">{message}</p>}
     </section>
   );

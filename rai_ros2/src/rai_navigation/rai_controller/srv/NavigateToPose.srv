@@ -1,0 +1,7 @@
+std_msgs/Header header
+geometry_msgs/PoseStamped goal
+string controller_id
+string planner_id
+---
+bool accepted
+string message

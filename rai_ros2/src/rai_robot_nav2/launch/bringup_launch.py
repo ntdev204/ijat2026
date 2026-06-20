@@ -19,7 +19,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, GroupAction,
                             IncludeLaunchDescription, SetEnvironmentVariable)
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -44,6 +44,7 @@ def generate_launch_description():
     use_composition = LaunchConfiguration('use_composition')
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
+    disable_controller_server = LaunchConfiguration('disable_controller_server')
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -120,6 +121,10 @@ def generate_launch_description():
         'log_level', default_value='info',
         description='log level')
 
+    declare_disable_controller_server_cmd = DeclareLaunchArgument(
+        'disable_controller_server', default_value='False',
+        description='Do not launch Nav2 controller_server. Use for standalone CCA-NMPC control.')
+
     # Specify the actions
     bringup_cmd_group = GroupAction([
         PushRosNamespace(
@@ -160,6 +165,19 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'navigation_launch.py')),
+            condition=UnlessCondition(disable_controller_server),
+            launch_arguments={'namespace': namespace,
+                              'use_sim_time': use_sim_time,
+                              'autostart': autostart,
+                              'params_file': params_file,
+                              'use_composition': use_composition,
+                              'use_respawn': use_respawn,
+                              'container_name': 'nav2_container'}.items()),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(os.path.dirname(__file__),
+                                                       'navigation_without_controller.launch.py')),
+            condition=IfCondition(disable_controller_server),
             launch_arguments={'namespace': namespace,
                               'use_sim_time': use_sim_time,
                               'autostart': autostart,
@@ -186,6 +204,7 @@ def generate_launch_description():
     ld.add_action(declare_use_composition_cmd)
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
+    ld.add_action(declare_disable_controller_server_cmd)
 
     # Add the actions to launch all of the navigation nodes
     ld.add_action(bringup_cmd_group)

@@ -6,49 +6,11 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 LOCAL_PLANNER_PRESETS = {
-    "CCA_NMPC": {
-        "plugin": "nav2_mppi_controller::MPPIController",
-        "horizon_steps": 20,
-        "model_dt": 0.05,
-        "max_solver_time_ms": 50.0,
-        "max_path_length": 3.0,
-        "default_v_ref": 0.35,
-        "vx_samples": 5,
-        "vy_samples": 5,
-        "omega_samples": 7,
-        "sim_time": 1.4,
-        "min_speed_xy": 0.03,
-        "acc_lim_x": 0.8,
-        "acc_lim_y": 0.8,
-        "acc_lim_theta": 1.2,
-        "costmap_cost_weight": 0.02,
-        "human_cost_weight": 8.0,
-        "goal_cost_weight": 12.0,
-        "path_align_weight": 3.0,
-        "beta": 3.0,
-        "d0": 1.5,
-        "d_safe_0": 0.5,
-        "d_safe_max": 1.2,
-        "v_max_min": 0.1,
-        "v_y_max_min": 0.1,
-        "omega_max_min": 0.2,
-        "q_x": 10.0,
-        "q_y": 10.0,
-        "q_theta": 5.0,
-        "r_vx": 0.1,
-        "r_vy": 0.1,
-        "r_omega": 0.05,
-        "rd_vx": 1.0,
-        "rd_vy": 1.0,
-        "rd_omega": 0.5,
-        "q_active_factor": 0.1,
-        "w_slack": 100000.0,
-    },
     "MPPI": {
         "plugin": "nav2_mppi_controller::MPPIController",
         "time_steps": 56,
@@ -262,7 +224,7 @@ def _write_runtime_params(context, *_args, **_kwargs):
         config = yaml.safe_load(handle) or {}
 
     if local_planner not in LOCAL_PLANNER_PRESETS:
-        local_planner = "CCA_NMPC"
+        local_planner = "MPPI"
     local_preset = LOCAL_PLANNER_PRESETS[local_planner]
     global_preset = GLOBAL_PLANNER_PRESETS.get(global_planner, GLOBAL_PLANNER_PRESETS["A_STAR"])
 
@@ -333,6 +295,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")
     slam = LaunchConfiguration("slam", default="False")
     use_composition = LaunchConfiguration("use_composition", default="False")
+    disable_controller_server = LaunchConfiguration("disable_controller_server", default="False")
     runtime_params = LaunchConfiguration("runtime_params")
 
     rai_nav_dir = get_package_share_directory("rai_nav2")
@@ -342,10 +305,13 @@ def generate_launch_description():
     map_file = LaunchConfiguration("map")
 
     param_dir = os.path.join(rai_nav_dir, "param", "rai_params")
-    default_params_path = os.path.join(param_dir, "canmpc_mec_nav2.yaml")
+    default_params_path = os.path.join(param_dir, "param_mini_mec.yaml")
     param_file = LaunchConfiguration("params")
     local_planner = LaunchConfiguration("local_planner")
     global_planner = LaunchConfiguration("global_planner")
+    disable_controller_server_effective = PythonExpression([
+        "'", disable_controller_server, "'.lower() in ('true', '1', 'yes')",
+    ])
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -360,8 +326,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "local_planner",
-            default_value="CCA_NMPC",
-            description="CCA_NMPC | MPPI | DWB | DWA",
+            default_value="MPPI",
+            description="MPPI | DWB | DWA",
         ),
         DeclareLaunchArgument(
             "global_planner",
@@ -378,6 +344,11 @@ def generate_launch_description():
             default_value="False",
             description="Use Nav2 component composition if true",
         ),
+        DeclareLaunchArgument(
+            "disable_controller_server",
+            default_value="False",
+            description="Skip Nav2 controller_server for standalone CCA-NMPC control",
+        ),
         OpaqueFunction(function=_write_runtime_params),
         Node(
             name="waypoint_cycle",
@@ -391,6 +362,7 @@ def generate_launch_description():
                 "slam": slam,
                 "use_sim_time": use_sim_time,
                 "use_composition": use_composition,
+                "disable_controller_server": disable_controller_server_effective,
                 "params_file": runtime_params,
             }.items(),
         ),

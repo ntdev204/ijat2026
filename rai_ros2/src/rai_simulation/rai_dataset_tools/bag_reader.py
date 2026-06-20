@@ -345,7 +345,7 @@ class Ros2Db3Reader:
                 elif topic_type in (
                     "ccanmpc_msgs/msg/Context",
                     "cca_nmpc_controller/msg/Context",
-                    "rai_ccanmpc_controller/msg/Context",
+                    "rai_controller/msg/Context",
                 ):
                     m_stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag = parse_context(data)
                     parsed_messages.append({
@@ -362,7 +362,7 @@ class Ros2Db3Reader:
                 elif topic_type in (
                     "ccanmpc_msgs/msg/HumanStates",
                     "cca_nmpc_controller/msg/HumanStates",
-                    "rai_ccanmpc_controller/msg/HumanStates",
+                    "rai_controller/msg/HumanStates",
                 ):
                     m_stamp, humans = parse_human_states(data)
                     parsed_messages.append({
@@ -372,7 +372,7 @@ class Ros2Db3Reader:
                 elif topic_type in (
                     "ccanmpc_msgs/msg/SolverStats",
                     "cca_nmpc_controller/msg/SolverStats",
-                    "rai_ccanmpc_controller/msg/SolverStats",
+                    "rai_controller/msg/SolverStats",
                 ):
                     m_stamp, solve_time_ms, iter_count, status, t_flag, c_flag = parse_solver_stats(data)
                     parsed_messages.append({

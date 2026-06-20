@@ -3,13 +3,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 import launch_ros.actions
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
+from launch.actions import GroupAction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import LoadComposableNodes
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.descriptions import ComposableNode
-from nav2_common.launch import RewrittenYaml
 
 def generate_robot_node(robot_urdf,child):
     return launch_ros.actions.Node(

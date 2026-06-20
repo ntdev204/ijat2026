@@ -26,8 +26,10 @@ from std_msgs.msg import String
 # Default paths
 WORKSPACE_DIR = "d:/Research/ijat2026"
 URDF_PATH = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_robot_urdf/urdf/mini_mec_robot.urdf")
-PARAMS_PATH = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_robot_nav2/param/rai_params/canmpc_mec_nav2.yaml")
-MAP_PATH = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_robot_nav2/map/RAI.yaml")
+CONTROLLER_PARAMS_PATH = os.path.join(
+    WORKSPACE_DIR,
+    "rai_ros2/src/rai_navigation/rai_navigation/config/rai_navigation.yaml",
+)
 OUTPUT_BASE_DIR = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_simulation/dataset")
 WORLDS_DIR = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_simulation/rai_gazebo_worlds/worlds")
 
@@ -197,7 +199,7 @@ def generate_jittered_pose(base_pose: List[float], pos_std: float = 0.05, yaw_st
     yaw = base_pose[2] + random.normalvariate(0, yaw_std)
     return [x, y, yaw]
 
-def run_trial(scenario_id: str, run_idx: int, controller_id: str) -> Dict[str, Any]:
+def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner: str) -> Dict[str, Any]:
     """Execute a single scenario simulation run."""
     print(f"\n==================== Starting Scenario {scenario_id} - Run {run_idx:03d} ====================")
     
@@ -254,17 +256,24 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str) -> Dict[str, A
     context_proc = subprocess.Popen(context_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     
-    # 7. Launch Nav2 stack (loads our CA-NMPC controller)
-    print("Launching Nav2 stack...")
-    nav_cmd = f"ros2 launch rai_nav2 rai_nav2.launch.py params:={PARAMS_PATH} use_sim_time:=True map:={MAP_PATH}"
-    nav_proc = subprocess.Popen(nav_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(6.0)  # Wait for Nav2 servers to initialize
+    # 7. Launch standalone RAI navigation stack.
+    print("Launching standalone RAI navigation stack...")
+    controller_cmd = (
+        "ros2 launch rai_navigation rai_navigation.launch.py "
+        f"params:={CONTROLLER_PARAMS_PATH} use_sim_time:=True "
+        "cmd_vel_topic:=/cmd_vel laser_scan_topic:=/scan imu_topic:= map_topic:= "
+        f"controller_id:={controller_id} global_planner_algorithm:={global_planner}"
+    )
+    controller_proc = subprocess.Popen(controller_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(4.0)
     
     # 8. Start ROS bag recording
     bag_out_dir = os.path.join(run_dir, "rosbag2")
     bag_topics = [
         "/scan", "/tf", "/tf_static", "/odom_combined", "/cmd_vel",
-        "/canmpc/context", "/canmpc/humans", "/canmpc/solver_stats", "/canmpc/adaptive_bounds"
+        "/canmpc/context", "/canmpc/humans", "/rai_navigation/global_path",
+        "/canmpc/solver_stats", "/canmpc/adaptive_bounds",
+        "/rai_navigation/local_costmap", "/rai_navigation/status", "/map"
     ]
     print(f"Starting ros2 bag record to {bag_out_dir}...")
     bag_cmd = f"ros2 bag record -o {bag_out_dir} {' '.join(bag_topics)}"
@@ -328,6 +337,7 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str) -> Dict[str, A
         "scenario_name": scen_info["name"],
         "run_id": run_name,
         "controller_id": controller_id,
+        "global_planner": global_planner,
         "start_pose": start_pose,
         "goal_pose": goal_pose,
         "success": success,
@@ -351,6 +361,7 @@ def main():
     parser = argparse.ArgumentParser(description="Automated Gazebo scenario batch runner for CA-NMPC experiments.")
     parser.add_argument("--scenarios", type=str, nargs="+", default=["S1", "S2", "S3", "S4", "S5"], help="Scenarios to run (e.g. S1 S2 S3 S4 S5)")
     parser.add_argument("--controller", type=str, default="CCA_NMPC", help="Controller package identity (e.g. CCA_NMPC, DWA, TEB)")
+    parser.add_argument("--global-planner", type=str, default="A_STAR", help="Global planner: A_STAR, DIJKSTRA, STRAIGHT_LINE")
     parser.add_argument("--runs", type=int, default=20, help="Number of runs per scenario (default: 20)")
     parser.add_argument("--seed", type=int, default=42, help="Seed value for reproducibility")
     args = parser.parse_args()
@@ -360,6 +371,7 @@ def main():
     print("Starting CCA-NMPC Scenario Runner Batch Process...")
     print(f"Target Scenarios: {args.scenarios}")
     print(f"Controller: {args.controller}")
+    print(f"Global planner: {args.global_planner}")
     print(f"Runs per scenario: {args.runs}")
     print(f"Seed: {args.seed}")
     
@@ -373,7 +385,7 @@ def main():
         scen_success_count = 0
         for run_idx in range(args.runs):
             try:
-                res = run_trial(scen, run_idx, args.controller)
+                res = run_trial(scen, run_idx, args.controller, args.global_planner)
                 summary.append(res)
                 if res["success"]:
                     scen_success_count += 1

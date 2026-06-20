@@ -27,7 +27,7 @@ def generate_launch_description():
         ),
 
         # 1.5. Filter raw lidar scans once for all runtime modes.
-        # SLAM, AMCL and Nav2 costmaps should consume /scan_filtered.
+        # SLAM, localization and RAI Navigation should consume /scan_filtered.
         TimerAction(
             period=6.0,
             actions=[

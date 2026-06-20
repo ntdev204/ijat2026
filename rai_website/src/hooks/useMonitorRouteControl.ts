@@ -133,7 +133,7 @@ export function useMonitorRouteControl(
           home_pose: payload.home_pose ?? anchors.home_pose,
         });
         setSelectionMode(null);
-        setStatusMessage("Initial pose published to Nav2.");
+        setStatusMessage("Initial pose published.");
       } else if (selectionMode === "home_pose") {
         const response = await fetchWithAuth("/api/robot/home", {
           method: "POST",
@@ -156,7 +156,7 @@ export function useMonitorRouteControl(
 
   async function runSelectedRoute() {
     if (!nav2Config.running) {
-      setStatusMessage("Nav2 is not running. Start Nav2 before sending a goal.");
+      setStatusMessage("RAI Navigation is not running. Start it before sending a goal.");
       return;
     }
     if (!routeGoalPose) {
@@ -180,7 +180,7 @@ export function useMonitorRouteControl(
 
   async function goHome() {
     if (!nav2Config.running) {
-      setStatusMessage("Nav2 is not running. Start Nav2 before going home.");
+      setStatusMessage("RAI Navigation is not running. Start it before going home.");
       return;
     }
     setBusy(true);
@@ -264,8 +264,8 @@ function getPoseDialogDescription(selectionMode: PoseSelectionMode) {
 
 function formatNavigationError(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 503 && error.message.includes("Nav2 action server is not available")) {
-      return "Nav2 is enabled but the navigate_to_pose action server is not ready yet.";
+    if (error.status === 503 && error.message.includes("RAI navigation goal service is not available")) {
+      return "RAI Navigation is enabled but the goal interface is not ready yet.";
     }
     if (error.status === 503 && error.message.includes("Home pose is not set")) {
       return "Home pose is not set. Use Set Home on the monitor map first.";

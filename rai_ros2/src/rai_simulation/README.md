@@ -38,7 +38,9 @@ For each run:
 3. **Simulation Launch**: Launches Gazebo Fortress with the scenario-specific world file.
 4. **Robot Spawning**: Spawns the `mini_mec_robot` model from `rai_robot_urdf` at the jittered start pose.
 5. **Bridge Launch**: Launches the `ros_gz_bridge` mapping topics (`/clock`, `/scan`, `/odom_combined`, `/cmd_vel`, `/tf`, `/tf_static`).
-6. **Telemetry Recording**: Launches `ros2 bag record` to record all target signals:
+6. **Context Monitor**: Launches the context estimator that publishes `/canmpc/context` and `/canmpc/humans`.
+7. **RAI Navigation**: Launches `rai_navigation`, which consumes `/goal_pose` directly and publishes commands without Nav2.
+8. **Telemetry Recording**: Launches `ros2 bag record` to record all target signals:
    - `/scan`
    - `/tf`
    - `/tf_static`
@@ -48,8 +50,8 @@ For each run:
    - `/canmpc/humans`
    - `/canmpc/solver_stats`
    - `/canmpc/adaptive_bounds`
-7. **Nav2 Stack**: Launches the Nav2 navigation stack configured with the CCA-NMPC local controller parameters.
-8. **Goal Dispatch**: Sends the randomized goal pose to Nav2.
-9. **Dynamic Actor Trigger**: For Scenario 5 (Occlusion), monitors the robot's odometry. When the robot crosses $x \ge 2.0$, it publishes a velocity command to `/model/s5_human/cmd_vel` to move the actor cylinder out from behind the wall at $1.2\text{ m/s}$ towards $y = 5.0$.
-10. **Termination**: Monitors the distance to the goal. Terminates and marks as SUCCESS if the robot reaches the goal within $35.0\text{ s}$, or TIMEOUT otherwise.
-11. **Metadata Logging**: Saves a `metadata.json` for each trial and appends the trial summary into a global `run_index.csv`.
+   - `/rai_navigation/local_costmap`
+9. **Goal Dispatch**: Sends the randomized goal pose to the standalone CCA-NMPC controller.
+10. **Dynamic Actor Trigger**: For Scenario 5 (Occlusion), monitors the robot's odometry. When the robot crosses $x \ge 2.0$, it publishes a velocity command to `/model/s5_human/cmd_vel` to move the actor cylinder out from behind the wall at $1.2\text{ m/s}$ towards $y = 5.0$.
+11. **Termination**: Monitors the distance to the goal. Terminates and marks as SUCCESS if the robot reaches the goal within $35.0\text{ s}$, or TIMEOUT otherwise.
+12. **Metadata Logging**: Saves a `metadata.json` for each trial and appends the trial summary into a global `run_index.csv`.

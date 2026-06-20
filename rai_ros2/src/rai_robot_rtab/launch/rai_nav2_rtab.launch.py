@@ -36,19 +36,19 @@ def generate_launch_description():
     my_param_dir = os.path.join(rtabmap_nav_dir, 'params')
     my_param_file = 'rtabmap_nav_params.yaml'
     
-    rai_bringup_dir = get_package_share_directory('turn_on_rai_robot')
+    robot_runtime_dir = get_package_share_directory('turn_on_rai_robot')
 
     remappings = [('/tf', 'tf'),
                   ('/tf_static', 'tf_static')]
 
     rai_robot = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(rai_bringup_dir, 'launch','turn_on_rai_robot.launch.py')),
+            PythonLaunchDescriptionSource(os.path.join(robot_runtime_dir, 'launch','turn_on_rai_robot.launch.py')),
     )
     rai_lidar = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(rai_bringup_dir, 'launch', 'rai_lidar.launch.py')),
+            PythonLaunchDescriptionSource(os.path.join(robot_runtime_dir, 'launch', 'rai_lidar.launch.py')),
     )
     rai_camera = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(rai_bringup_dir, 'launch', 'rai_camera.launch.py')),
+            PythonLaunchDescriptionSource(os.path.join(robot_runtime_dir, 'launch', 'rai_camera.launch.py')),
     )
     rai_localization = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(rtabmap_nav_dir, 'launch', 'rtabmap_localization.launch.py')),

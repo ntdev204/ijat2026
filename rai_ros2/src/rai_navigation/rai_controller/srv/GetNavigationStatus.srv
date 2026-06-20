@@ -1,0 +1,6 @@
+---
+string state
+string detail
+string active_controller_id
+string active_planner_id
+bool has_active_goal

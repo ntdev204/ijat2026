@@ -30,7 +30,7 @@ const DEFAULT_NAV2_CONFIG: Nav2Config = {
 
 export function useNav2Control(): Nav2ControlRuntime {
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Waiting for Nav2 state.");
+  const [message, setMessage] = useState("Waiting for RAI Navigation state.");
   const [systemRuntime, setSystemRuntime] = useState<SystemRuntime | null>(null);
   const [nav2Config, setNav2Config] = useState<Nav2Config>(DEFAULT_NAV2_CONFIG);
   const [nav2Maps, setNav2Maps] = useState<Array<{ id?: number; name?: string; yaml_path?: string | null }>>([]);
@@ -43,18 +43,18 @@ export function useNav2Control(): Nav2ControlRuntime {
       const runtimeResponse = await fetchWithAuth("/api/system/runtime");
       const runtime = (await runtimeResponse.json()) as SystemRuntime;
       setSystemRuntime(runtime);
-      if (!runtime.allowed_actions.includes("nav2")) {
+      if (!runtime.allowed_actions.includes("navigation") && !runtime.allowed_actions.includes("nav2")) {
         setNav2Maps([]);
         setSelectedMapId("");
         setNav2LocalOptions([]);
         setNav2GlobalOptions([]);
         setNav2Config(DEFAULT_NAV2_CONFIG);
-        setMessage(`Nav2 control is disabled on ${runtime.device_label} (${runtime.device_role}).`);
+        setMessage(`RAI Navigation control is disabled on ${runtime.device_label} (${runtime.device_role}).`);
         return;
       }
       const [optionsResponse, configResponse, mapsResponse] = await Promise.all([
-        fetchWithAuth("/api/nav2/options"),
-        fetchWithAuth("/api/nav2/config"),
+        fetchWithAuth("/api/rai-navigation/options"),
+        fetchWithAuth("/api/rai-navigation/config"),
         fetchWithAuth("/api/map/list"),
       ]);
       const options = await optionsResponse.json();
@@ -72,13 +72,13 @@ export function useNav2Control(): Nav2ControlRuntime {
       setNav2Maps(maps);
       setSelectedMapId(resolvedMapId != null ? String(resolvedMapId) : "");
       setNav2Config(config);
-      setMessage(`Nav2 ${config.running ? "running" : "idle"} on ${config.local_planner} + ${config.global_planner}.`);
+      setMessage(`RAI Navigation ${config.running ? "running" : "idle"} on ${config.local_planner} + ${config.global_planner}.`);
     } catch (error) {
       setNav2Maps([]);
       setSelectedMapId("");
       setNav2LocalOptions([]);
       setNav2GlobalOptions([]);
-      setMessage(error instanceof Error ? error.message : "Cannot load Nav2 state.");
+      setMessage(error instanceof Error ? error.message : "Cannot load RAI Navigation state.");
     }
   }, []);
 
@@ -102,7 +102,7 @@ export function useNav2Control(): Nav2ControlRuntime {
         if (effectiveMapId != null && Number.isFinite(effectiveMapId)) payload.map_id = effectiveMapId;
         else payload.map_path = nav2Config.map_path;
 
-        const response = await fetchWithAuth("/api/nav2/config", {
+        const response = await fetchWithAuth("/api/rai-navigation/config", {
           method: "POST",
           body: JSON.stringify(payload),
         });
@@ -112,9 +112,9 @@ export function useNav2Control(): Nav2ControlRuntime {
           setSelectedMapId(String(effectiveMapId));
           writeSelectedMapId(effectiveMapId);
         }
-        setMessage(`Nav2 config updated: ${config.local_planner} + ${config.global_planner}.`);
+        setMessage(`RAI Navigation config updated: ${config.local_planner} + ${config.global_planner}.`);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Cannot update Nav2 config.");
+        setMessage(error instanceof Error ? error.message : "Cannot update RAI Navigation config.");
       } finally {
         setBusy(false);
       }
@@ -138,10 +138,10 @@ export function useNav2Control(): Nav2ControlRuntime {
     try {
       const parsedMapId = selectedMapId ? Number.parseInt(selectedMapId, 10) : NaN;
       if (!Number.isFinite(parsedMapId)) {
-        throw new Error("No Nav2 map selected. Choose a saved map before starting Nav2.");
+        throw new Error("No RAI Navigation map selected. Choose a saved map before starting RAI Navigation.");
       }
       if (Number.isFinite(parsedMapId)) {
-        await fetchWithAuth("/api/nav2/config", {
+        await fetchWithAuth("/api/rai-navigation/config", {
           method: "POST",
           body: JSON.stringify({
             local_planner: nav2Config.local_planner,
@@ -150,12 +150,12 @@ export function useNav2Control(): Nav2ControlRuntime {
           }),
         });
       }
-      const response = await fetchWithAuth("/api/nav2/start", { method: "POST" });
+      const response = await fetchWithAuth("/api/rai-navigation/start", { method: "POST" });
       const config = (await response.json()) as Nav2Config;
       setNav2Config(config);
-      setMessage(`Nav2 started with ${config.local_planner} / ${config.global_planner}.`);
+      setMessage(`RAI Navigation started with ${config.local_planner} / ${config.global_planner}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Nav2 start failed.");
+      setMessage(error instanceof Error ? error.message : "RAI Navigation start failed.");
     } finally {
       setBusy(false);
     }
@@ -164,12 +164,12 @@ export function useNav2Control(): Nav2ControlRuntime {
   const stopNav2 = useCallback(async () => {
     setBusy(true);
     try {
-      const response = await fetchWithAuth("/api/nav2/stop", { method: "POST" });
+      const response = await fetchWithAuth("/api/rai-navigation/stop", { method: "POST" });
       const config = (await response.json()) as Nav2Config;
       setNav2Config(config);
-      setMessage("Nav2 stopped.");
+      setMessage("RAI Navigation stopped.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Nav2 stop failed.");
+      setMessage(error instanceof Error ? error.message : "RAI Navigation stop failed.");
     } finally {
       setBusy(false);
     }

@@ -1,0 +1,3 @@
+# This directory is excluded from the colcon build.
+# navigation2-humble has been replaced by rai_navigation (no Nav2 dependency).
+# To re-enable: delete this file and rebuild.

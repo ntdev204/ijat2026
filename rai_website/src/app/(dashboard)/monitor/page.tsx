@@ -148,7 +148,7 @@ function RealtimeMapPanel({ mapCanvasRef, mapData, nav2Running, paths, selection
         <MapIcon className="size-4 text-blue-600" />
         <span className="font-medium text-slate-800">Realtime Map</span>
         <span className={`ml-auto rounded-full px-2 py-1 text-xs font-medium ${nav2Running ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-          {nav2Running ? "Nav2 ready" : "Nav2 not running"}
+          {nav2Running ? "RAI Navigation ready" : "RAI Navigation not running"}
         </span>
       </div>
       <div className="flex min-h-[360px] items-center justify-center overflow-auto bg-slate-100 p-4">

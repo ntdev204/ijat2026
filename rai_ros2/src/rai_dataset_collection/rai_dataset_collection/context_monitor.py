@@ -21,7 +21,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, LaserScan
 from std_msgs.msg import Float32MultiArray, String
-from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanState, HumanStates
+from rai_controller.msg import AdaptiveBounds, Context, HumanState, HumanStates
 
 
 class ContextMonitor(Node):

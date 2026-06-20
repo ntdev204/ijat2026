@@ -23,7 +23,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry, Path as NavPath
 from sensor_msgs.msg import CameraInfo, Image, JointState, LaserScan, Imu
 from std_msgs.msg import Float32, Float32MultiArray, String
 from tf2_msgs.msg import TFMessage
-from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
+from rai_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
 
 import rosbag2_py
 from rosbag2_py import ConverterOptions, StorageOptions, TopicMetadata
@@ -100,15 +100,15 @@ class DatasetCollectorNode(Node):
             ('/wheel_encoders', JointState, 'sensor_msgs/msg/JointState', reliable_qos),
             ('/voltage', Float32, 'std_msgs/msg/Float32', reliable_qos),
             ('/context', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/context', Context, 'rai_ccanmpc_controller/msg/Context', reliable_qos),
-            ('/canmpc/humans', HumanStates, 'rai_ccanmpc_controller/msg/HumanStates', reliable_qos),
+            ('/canmpc/context', Context, 'rai_controller/msg/Context', reliable_qos),
+            ('/canmpc/humans', HumanStates, 'rai_controller/msg/HumanStates', reliable_qos),
             ('/canmpc/context_json', String, 'std_msgs/msg/String', reliable_qos),
             ('/canmpc/humans_json', String, 'std_msgs/msg/String', reliable_qos),
-            ('/canmpc/adaptive_bounds', AdaptiveBounds, 'rai_ccanmpc_controller/msg/AdaptiveBounds', reliable_qos),
+            ('/canmpc/adaptive_bounds', AdaptiveBounds, 'rai_controller/msg/AdaptiveBounds', reliable_qos),
             ('/canmpc/adaptive_bounds_array', Float32MultiArray, 'std_msgs/msg/Float32MultiArray', reliable_qos),
             ('/canmpc/local_reference_path', NavPath, 'nav_msgs/msg/Path', reliable_qos),
             ('/canmpc/predicted_trajectory', NavPath, 'nav_msgs/msg/Path', reliable_qos),
-            ('/canmpc/solver_stats', SolverStats, 'rai_ccanmpc_controller/msg/SolverStats', reliable_qos),
+            ('/canmpc/solver_stats', SolverStats, 'rai_controller/msg/SolverStats', reliable_qos),
             ('/local_costmap/costmap', OccupancyGrid, 'nav_msgs/msg/OccupancyGrid', reliable_qos),
             ('/local_costmap/published_footprint', PolygonStamped, 'geometry_msgs/msg/PolygonStamped', reliable_qos),
         ]

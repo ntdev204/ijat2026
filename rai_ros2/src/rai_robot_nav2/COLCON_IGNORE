@@ -1,0 +1,3 @@
+# This package has been superseded by rai_robot_navigation.
+# rai_robot_nav2 depended on nav2_bringup which is now removed.
+# Use: ros2 launch rai_robot_navigation bringup_launch.py

@@ -7,20 +7,12 @@ import rclpy
 import tf2_ros
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
 from std_msgs.msg import Bool, Float32, String
-from action_msgs.msg import GoalStatus
-from rai_ccanmpc_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
-
-try:
-    from nav2_msgs.action import NavigateToPose
-    NAV2_AVAILABLE = True
-except ImportError:
-    NAV2_AVAILABLE = False
+from rai_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
 
 class WebBridgeNode(Node):
     """
@@ -107,6 +99,7 @@ class WebBridgeNode(Node):
 
         # Permanent Publishers/Clients
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.cca_goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.voltage_sub = self.create_subscription(
             Float32, '/PowerVoltage', self.voltage_callback, self.reliable_qos
@@ -117,14 +110,6 @@ class WebBridgeNode(Node):
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-
-        # Nav2 Action Client
-        if NAV2_AVAILABLE:
-            self.nav_to_pose_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-            self.get_logger().info("Nav2 Action Client initialized successfully.")
-        else:
-            self.nav_to_pose_client = None
-            self.get_logger().warn("Nav2 Action Client is NOT available (nav2_msgs missing).")
 
         # Camera frame cache (cho WebRTC)
         self.latest_camera_frame = None
@@ -462,6 +447,25 @@ class WebBridgeNode(Node):
                 "y": round(transform.transform.translation.y, 3),
                 "yaw": yaw,
             }
+        self._maybe_dispatch_pending_rai_goal()
+
+    def _maybe_dispatch_pending_rai_goal(self):
+        with self.lock:
+            pending = dict(self.pending_nav_goal) if self.pending_nav_goal else None
+            current_pose = dict(self.telemetry.get("map_pose", {}))
+        if pending is None or pending.get("mode") != "rai_navigation":
+            return
+
+        distance = math.hypot(
+            float(pending.get("start_x", 0.0)) - float(current_pose.get("x", 0.0) or 0.0),
+            float(pending.get("start_y", 0.0)) - float(current_pose.get("y", 0.0) or 0.0),
+        )
+        if distance > float(pending.get("start_tolerance", 0.25)):
+            return
+
+        with self.lock:
+            self.pending_nav_goal = None
+        self.send_cca_nmpc_goal(pending["x"], pending["y"], pending.get("yaw", 0.0))
 
 
     # --- ACTIONS & COMMANDS ---
@@ -475,7 +479,7 @@ class WebBridgeNode(Node):
         self.cmd_vel_pub.publish(msg)
 
     def publish_initial_pose(self, x: float, y: float, yaw: float, set_home: bool = False):
-        """Đặt vị trí khởi tạo cho AMCL / Nav2."""
+        """Đặt vị trí khởi tạo trên map cho localization/navigation."""
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = 'map'
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -536,11 +540,25 @@ class WebBridgeNode(Node):
             }
 
     def send_nav_goal(self, x: float, y: float, yaw: float):
-        """Gửi mục tiêu di chuyển Nav2 (NavigateToPose)."""
-        return self._dispatch_nav_goal(x, y, yaw)
+        """Send a goal to RAI Navigation."""
+        return self.send_cca_nmpc_goal(x, y, yaw)
 
-    def send_nav_route(self, start_pose: dict, goal_pose: dict, start_tolerance: float = 0.25):
-        """Đi đến start trước nếu robot chưa ở start, sau đó mới đi goal."""
+    def send_cca_nmpc_goal(self, x: float, y: float, yaw: float):
+        """Publish goal for the standalone RAI navigation controller."""
+        goal_msg = PoseStamped()
+        goal_msg.header.frame_id = 'map'
+        goal_msg.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.position.x = x
+        goal_msg.pose.position.y = y
+        qz, qw = self._yaw_to_quaternion(yaw)
+        goal_msg.pose.orientation.z = qz
+        goal_msg.pose.orientation.w = qw
+        self.cca_goal_pub.publish(goal_msg)
+        self.get_logger().info(f"Published CCA-NMPC goal: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
+        return True
+
+    def send_cca_nmpc_route(self, start_pose: dict, goal_pose: dict, start_tolerance: float = 0.25):
+        """Go to start first if needed, then send the final RAI navigation goal."""
         with self.lock:
             current_pose = dict(self.telemetry.get("map_pose", {}))
 
@@ -552,18 +570,26 @@ class WebBridgeNode(Node):
         self.pending_nav_goal = None
 
         if distance_to_start <= start_tolerance:
-            self.get_logger().info("Robot is already near start point. Sending goal directly.")
-            return self._dispatch_nav_goal(float(goal_pose["x"]), float(goal_pose["y"]), float(goal_pose.get("yaw", 0.0)))
+            return self.send_cca_nmpc_goal(
+                float(goal_pose["x"]),
+                float(goal_pose["y"]),
+                float(goal_pose.get("yaw", 0.0)),
+            )
 
         self.pending_nav_goal = {
             "x": float(goal_pose["x"]),
             "y": float(goal_pose["y"]),
             "yaw": float(goal_pose.get("yaw", 0.0)),
+            "mode": "rai_navigation",
+            "start_x": start_x,
+            "start_y": start_y,
+            "start_tolerance": start_tolerance,
         }
-        self.get_logger().info(
-            f"Robot is {distance_to_start:.2f}m from start. Going to start first, then goal."
-        )
-        return self._dispatch_nav_goal(start_x, start_y, float(start_pose.get("yaw", 0.0)))
+        return self.send_cca_nmpc_goal(start_x, start_y, float(start_pose.get("yaw", 0.0)))
+
+    def send_nav_route(self, start_pose: dict, goal_pose: dict, start_tolerance: float = 0.25):
+        """Compatibility wrapper for RAI Navigation route dispatch."""
+        return self.send_cca_nmpc_route(start_pose, goal_pose, start_tolerance)
 
     def send_home_goal(self):
         with self.lock:
@@ -571,100 +597,12 @@ class WebBridgeNode(Node):
         if home_pose is None:
             self.get_logger().error("Home pose is not set.")
             return False
-        return self._dispatch_nav_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
-
-    def _dispatch_nav_goal(self, x: float, y: float, yaw: float):
-        """Gửi goal tới action server và giữ callback để chain goal tiếp theo."""
-        if not self.nav_to_pose_client:
-            self.get_logger().error("Nav2 action client is not initialized!")
-            return False
-
-        if not self._wait_for_nav_server(timeout_sec=2.0):
-            self.get_logger().error("Nav2 action server not available!")
-            return False
-
-        goal_msg = NavigateToPose.Goal()
-        goal_msg.pose.header.frame_id = 'map'
-        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = x
-        goal_msg.pose.pose.position.y = y
-
-        qz, qw = self._yaw_to_quaternion(yaw)
-        goal_msg.pose.pose.orientation.z = qz
-        goal_msg.pose.pose.orientation.w = qw
-
-        self.get_logger().info(f"Sending Nav2 goal: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
-        send_future = self.nav_to_pose_client.send_goal_async(goal_msg)
-        send_future.add_done_callback(self._handle_nav_goal_response)
-        return True
-
-    def _wait_for_nav_server(self, timeout_sec: float = 2.0):
-        """Tương thích nhiều bản rclpy ActionClient."""
-        if self.nav_to_pose_client is None:
-            return False
-
-        wait_for_server = getattr(self.nav_to_pose_client, "wait_for_server", None)
-        if callable(wait_for_server):
-            return bool(wait_for_server(timeout_sec=timeout_sec))
-
-        wait_for_action_server = getattr(self.nav_to_pose_client, "wait_for_action_server", None)
-        if callable(wait_for_action_server):
-            return bool(wait_for_action_server(timeout_sec=timeout_sec))
-
-        server_is_ready = getattr(self.nav_to_pose_client, "server_is_ready", None)
-        if callable(server_is_ready):
-            deadline = time.time() + timeout_sec
-            while time.time() < deadline:
-                if bool(server_is_ready()):
-                    return True
-                time.sleep(0.1)
-        return False
+        return self.send_cca_nmpc_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
 
     def cancel_nav_goal(self):
-        """Hủy hành trình di chuyển Nav2 đang chạy."""
+        """Cancel pending RAI navigation route chaining."""
         self.pending_nav_goal = None
-        self.get_logger().info("Cancelling current Nav2 goal...")
-        if self.current_nav_goal_handle is not None:
-            self.current_nav_goal_handle.cancel_goal_async()
-            self.current_nav_goal_handle = None
-
-    def _handle_nav_goal_response(self, future):
-        try:
-            goal_handle = future.result()
-        except Exception as error:
-            self.get_logger().error(f"Failed to send Nav2 goal: {error}")
-            self.pending_nav_goal = None
-            return
-
-        if not goal_handle.accepted:
-            self.get_logger().error("Nav2 goal was rejected by action server.")
-            self.pending_nav_goal = None
-            return
-
-        self.current_nav_goal_handle = goal_handle
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._handle_nav_goal_result)
-
-    def _handle_nav_goal_result(self, future):
         self.current_nav_goal_handle = None
-        try:
-            result = future.result()
-        except Exception as error:
-            self.get_logger().error(f"Nav2 goal result failed: {error}")
-            self.pending_nav_goal = None
-            return
-
-        if result.status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info("Nav2 goal completed successfully.")
-            if self.pending_nav_goal is not None:
-                next_goal = dict(self.pending_nav_goal)
-                self.pending_nav_goal = None
-                self.get_logger().info("Dispatching pending goal after reaching start point.")
-                self._dispatch_nav_goal(next_goal["x"], next_goal["y"], next_goal.get("yaw", 0.0))
-            return
-
-        self.get_logger().warn(f"Nav2 goal finished with status {result.status}.")
-        self.pending_nav_goal = None
 
     def _yaw_to_quaternion(self, yaw: float):
         cy = math.cos(yaw * 0.5)

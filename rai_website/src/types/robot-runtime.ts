@@ -39,6 +39,8 @@ export interface Nav2Config {
   map_path: string;
   selected_map_id?: number | null;
   running: boolean;
+  controller_server_enabled?: boolean;
+  cca_nmpc_running?: boolean;
 }
 
 export interface SystemRuntime {

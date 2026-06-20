@@ -53,7 +53,7 @@ spin_thread: Optional[threading.Thread] = None
 peer_connections: set[RTCPeerConnection] = set()
 active_dataset_run_id: Optional[int] = None
 dataset_bag_process: Optional[subprocess.Popen] = None
-nav2_process: Optional[subprocess.Popen] = None
+rai_navigation_process: Optional[subprocess.Popen] = None
 slam_process: Optional[subprocess.Popen] = None
 
 DATASET_REQUIRED_TOPICS = [
@@ -65,15 +65,15 @@ DATASET_REQUIRED_TOPICS = [
     "/tf_static",
     "/cmd_vel",
     "/cmd_vel_web",
-    "/cca_nmpc/cmd_vel",
     "/canmpc/context",
     "/canmpc/humans",
     "/canmpc/adaptive_bounds",
     "/canmpc/predicted_trajectory",
     "/canmpc/local_reference_path",
     "/canmpc/solver_stats",
-    "/local_costmap/costmap",
-    "/local_costmap/published_footprint",
+    "/rai_navigation/status",
+    "/rai_navigation/global_path",
+    "/rai_navigation/local_costmap",
 ]
 DATASET_CAMERA_TOPICS = [
     "/camera/color/image_raw",
@@ -105,10 +105,10 @@ RUN_INDEX_FIELDS = [
     "notes",
 ]
 
-NAV2_KILL_PATTERNS = (
-    "ros2 launch rai_nav2 rai_nav2.launch.py",
-    "nav2_waypoint_cycle",
-    "__node:=nav2_container",
+RAI_NAVIGATION_KILL_PATTERNS = (
+    "ros2 launch rai_navigation rai_navigation.launch.py",
+    "rai_controller_server",
+    "__node:=rai_controller",
 )
 SLAM_KILL_PATTERNS = (
     "ros2 launch rai_slam_toolbox online_async_launch.py",
@@ -116,27 +116,24 @@ SLAM_KILL_PATTERNS = (
     "__node:=slam_toolbox",
 )
 
-NAV2_LOCAL_PLANNER_OPTIONS = [
-    {"id": "DWB", "label": "DWB", "plugin": "dwb_core::DWBLocalPlanner", "native": True},
-    {"id": "DWA", "label": "DWA-like", "plugin": "dwb_plugins::LimitedAccelGenerator", "native": False},
-    {"id": "MPPI", "label": "MPPI", "plugin": "nav2_mppi_controller::MPPIController", "native": True},
-    {"id": "CCA_NMPC", "label": "CCA-NMPC standalone", "plugin": "rai_ccanmpc_controller/rai_ccanmpc_controller_node", "native": True},
+RAI_CONTROLLER_OPTIONS = [
+    {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "rai_controller_cca_nmpc", "native": True},
 ]
-NAV2_GLOBAL_PLANNER_OPTIONS = [
-    {"id": "A_STAR", "label": "A*", "plugin": "nav2_navfn_planner/NavfnPlanner"},
-    {"id": "DIJKSTRA", "label": "Dijkstra", "plugin": "nav2_navfn_planner/NavfnPlanner"},
-    {"id": "HYBRID_ASTAR", "label": "Hybrid A*", "plugin": "nav2_smac_planner/SmacPlannerHybrid"},
+RAI_GLOBAL_PLANNER_OPTIONS = [
+    {"id": "A_STAR", "label": "A*", "plugin": "rai_planner_a_star"},
+    {"id": "DIJKSTRA", "label": "Dijkstra", "plugin": "rai_planner_dijkstra"},
+    {"id": "STRAIGHT_LINE", "label": "Straight line", "plugin": "rai_planner_straight_line"},
 ]
-default_local_planner = os.getenv("RAI_NAV2_LOCAL_PLANNER", "CCA_NMPC").upper()
-if default_local_planner not in {item["id"] for item in NAV2_LOCAL_PLANNER_OPTIONS}:
+default_local_planner = os.getenv("RAI_NAVIGATION_CONTROLLER", "CCA_NMPC").upper()
+if default_local_planner not in {item["id"] for item in RAI_CONTROLLER_OPTIONS}:
     default_local_planner = "CCA_NMPC"
 
-nav2_runtime_config = {
+rai_navigation_runtime_config = {
     "local_planner": default_local_planner,
-    "global_planner": os.getenv("RAI_NAV2_GLOBAL_PLANNER", "A_STAR").upper(),
-    "map_path": os.getenv("RAI_NAV2_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
+    "global_planner": os.getenv("RAI_NAVIGATION_GLOBAL_PLANNER", "A_STAR").upper(),
+    "map_path": os.getenv("RAI_NAVIGATION_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
     "selected_map_id": None,
-    "params_path": os.getenv("RAI_NAV2_PARAMS", ""),
+    "params_path": os.getenv("RAI_NAVIGATION_PARAMS", ""),
     "last_command": None,
 }
 
@@ -151,7 +148,7 @@ training_state = {
 MAP_STORAGE_DIR = Path(os.getenv("RAI_MAP_STORAGE_DIR", "/home/rai/rai_ros2/data/map")).expanduser()
 
 ROLE_ALLOWED_ACTIONS = {
-    "pi": {"teleop", "nav2", "slam", "dataset", "maps"},
+    "pi": {"teleop", "navigation", "nav2", "slam", "dataset", "maps"},
     "jetson": {"controller"},
 }
 ALLOWED_ACTIONS = ROLE_ALLOWED_ACTIONS.get(DEVICE_ROLE, set())
@@ -235,7 +232,7 @@ class UpdateMapRequest(BaseModel):
     name: str = Field(..., min_length=1)
 
 
-class Nav2ConfigRequest(BaseModel):
+class RaiNavigationConfigRequest(BaseModel):
     local_planner: str = Field(default="CCA_NMPC")
     global_planner: str = Field(default="A_STAR")
     map_path: Optional[str] = None
@@ -243,57 +240,51 @@ class Nav2ConfigRequest(BaseModel):
     params_path: Optional[str] = None
 
 
-def _nav2_package_share() -> Path:
-    return Path(get_package_share_directory("rai_nav2")).resolve()
+def _rai_navigation_package_share() -> Path:
+    return Path(get_package_share_directory("rai_navigation")).resolve()
 
 
-def _default_nav2_params_path() -> Path:
-    package_share = _nav2_package_share()
-    return package_share / "param" / "rai_params" / "canmpc_mec_nav2.yaml"
+def _default_rai_navigation_params_path() -> Path:
+    package_share = _rai_navigation_package_share()
+    return package_share / "config" / "rai_navigation.yaml"
 
 
-def _default_nav2_map_path() -> Path:
+def _default_rai_navigation_map_path() -> Path:
     return Path("/home/rai/rai_ros2/data/map/RAI.yaml")
 
 
-def _runtime_nav2_params_path(local_planner: str, global_planner: str, base_params_path: Path) -> Path:
+def _runtime_rai_navigation_params_path(local_planner: str, global_planner: str, base_params_path: Path) -> Path:
     with base_params_path.open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
 
-    controller_params = config.setdefault("controller_server", {}).setdefault("ros__parameters", {})
-    planner_params = config.setdefault("planner_server", {}).setdefault("ros__parameters", {})
-    amcl_params = config.setdefault("amcl", {}).setdefault("ros__parameters", {})
-    local_costmap_params = (
-        config.setdefault("local_costmap", {})
-        .setdefault("local_costmap", {})
-        .setdefault("ros__parameters", {})
-    )
-    global_costmap_params = (
-        config.setdefault("global_costmap", {})
-        .setdefault("global_costmap", {})
-        .setdefault("ros__parameters", {})
-    )
-    controller_params["goal_checker_plugins"] = ["general_goal_checker"]
-    controller_params["current_goal_checker"] = "general_goal_checker"
-    controller_params["selected_local_planner"] = local_planner
-    planner_params["selected_global_planner"] = global_planner
-    amcl_params["transform_tolerance"] = 0.3
-    local_costmap_params["transform_tolerance"] = 0.3
-    global_costmap_params["transform_tolerance"] = 0.3
+    controller_params = config.setdefault("rai_controller", {}).setdefault("ros__parameters", {})
+    controller_params["controller_id"] = local_planner
+    controller_params["global_planner_algorithm"] = global_planner
 
-    temp_dir = Path(tempfile.mkdtemp(prefix="rai_web_api_nav2_"))
-    params_path = temp_dir / "nav2_runtime.yaml"
+    temp_dir = Path(tempfile.mkdtemp(prefix="rai_web_api_navigation_"))
+    params_path = temp_dir / "rai_navigation_runtime.yaml"
     with params_path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(config, handle, sort_keys=False)
     return params_path
 
 
-def _nav2_launch_command(map_path: Path, params_path: Path, local_planner: str, global_planner: str) -> str:
+def _is_cca_nmpc(local_planner: str | None = None) -> bool:
+    planner = local_planner or rai_navigation_runtime_config["local_planner"]
+    return planner.upper() == "CCA_NMPC"
+
+
+def _rai_navigation_launch_command(
+    map_path: Path,
+    params_path: Path,
+    local_planner: str,
+    global_planner: str,
+    disable_controller_server: bool = False,
+) -> str:
+    _ = disable_controller_server
     return (
-        "ros2 launch rai_nav2 rai_nav2.launch.py "
-        f"map:={map_path} params:={params_path} "
-        f"local_planner:={local_planner} global_planner:={global_planner} "
-        "use_composition:=False"
+        "ros2 launch rai_navigation rai_navigation.launch.py "
+        f"params:={params_path} controller_id:={local_planner} "
+        f"global_planner_algorithm:={global_planner} map:={map_path} map_topic:=/map"
     )
 
 
@@ -321,6 +312,10 @@ def _system_runtime_payload() -> dict:
 
 
 def _require_action(action: str) -> None:
+    if action == "navigation" and "nav2" in ALLOWED_ACTIONS:
+        return
+    if action == "nav2" and "navigation" in ALLOWED_ACTIONS:
+        return
     if action in ALLOWED_ACTIONS:
         return
     raise HTTPException(
@@ -553,24 +548,24 @@ async def startup() -> None:
     spin_thread = threading.Thread(target=_spin_ros_node, daemon=True)
     spin_thread.start()
     DATASET_BASE_PATH.mkdir(parents=True, exist_ok=True)
-    if not nav2_runtime_config["params_path"]:
-        nav2_runtime_config["params_path"] = str(_default_nav2_params_path())
-    if not Path(nav2_runtime_config["map_path"]).exists():
-        nav2_runtime_config["map_path"] = ""
+    if not rai_navigation_runtime_config["params_path"]:
+        rai_navigation_runtime_config["params_path"] = str(_default_rai_navigation_params_path())
+    if not Path(rai_navigation_runtime_config["map_path"]).exists():
+        rai_navigation_runtime_config["map_path"] = ""
     logger.info("Rai Web API started on robot with role=%s label=%s.", DEVICE_ROLE, DEVICE_LABEL)
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global nav2_process, slam_process
+    global rai_navigation_process, slam_process
     close_tasks = [pc.close() for pc in list(peer_connections)]
     if close_tasks:
         await asyncio.gather(*close_tasks, return_exceptions=True)
     peer_connections.clear()
 
-    _stop_stack_process(nav2_process, NAV2_KILL_PATTERNS)
+    _stop_stack_process(rai_navigation_process, RAI_NAVIGATION_KILL_PATTERNS)
     _stop_stack_process(slam_process, SLAM_KILL_PATTERNS)
-    nav2_process = None
+    rai_navigation_process = None
     slam_process = None
 
     if bridge_node is not None:
@@ -754,23 +749,23 @@ async def publish_cmd_vel(command: VelocityCommand) -> dict:
 async def send_nav_goal(goal: NavGoalRequest) -> dict:
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    success = bridge_node.send_nav_goal(goal.x, goal.y, goal.yaw)
+    success = bridge_node.send_cca_nmpc_goal(goal.x, goal.y, goal.yaw)
     if not success:
-        raise HTTPException(status_code=503, detail="Nav2 action server is not available")
-    return {"success": True}
+        raise HTTPException(status_code=503, detail="RAI navigation goal publisher is not available")
+    return {"success": True, "controller": "CCA_NMPC", "message": "RAI navigation goal published."}
 
 
 @app.post("/api/robot/nav/route")
 async def send_nav_route(route: RoutePlanRequest) -> dict:
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    success = bridge_node.send_nav_route(
+    success = bridge_node.send_cca_nmpc_route(
         {"x": route.start.x, "y": route.start.y, "yaw": route.start.yaw},
         {"x": route.goal.x, "y": route.goal.y, "yaw": route.goal.yaw},
         route.start_tolerance,
     )
     if not success:
-        raise HTTPException(status_code=503, detail="Nav2 action server is not available")
+        raise HTTPException(status_code=503, detail="RAI navigation route publisher is not available")
     return {
         "success": True,
         "message": "Route dispatched. Robot will go to start first if needed, then continue to goal.",
@@ -819,39 +814,46 @@ async def set_home_pose(request: PoseRequest) -> dict:
 async def send_home_goal() -> dict:
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    success = bridge_node.send_home_goal()
-    if not success:
-        raise HTTPException(status_code=503, detail="Home pose is not set or Nav2 action server is not available")
-    return {"success": True, "message": "Going home."}
+    anchors = bridge_node.get_anchor_state()
+    home_pose = anchors.get("home_pose")
+    if home_pose is None:
+        raise HTTPException(status_code=503, detail="Home pose is not set")
+    bridge_node.send_cca_nmpc_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
+    return {"success": True, "message": "RAI navigation home goal published."}
 
 
+@app.get("/api/rai-navigation/options")
 @app.get("/api/nav2/options")
-async def nav2_options() -> dict:
-    _require_action("nav2")
+async def rai_navigation_options() -> dict:
+    _require_action("navigation")
     return {
-        "local_planners": NAV2_LOCAL_PLANNER_OPTIONS,
-        "global_planners": NAV2_GLOBAL_PLANNER_OPTIONS,
+        "local_planners": RAI_CONTROLLER_OPTIONS,
+        "global_planners": RAI_GLOBAL_PLANNER_OPTIONS,
     }
 
 
+@app.get("/api/rai-navigation/config")
 @app.get("/api/nav2/config")
-async def nav2_config() -> dict:
-    _require_action("nav2")
-    global nav2_process
+async def rai_navigation_config() -> dict:
+    _require_action("navigation")
     return {
-        **nav2_runtime_config,
-        "running": nav2_process is not None and nav2_process.poll() is None,
+        **rai_navigation_runtime_config,
+        "running": rai_navigation_process is not None and rai_navigation_process.poll() is None,
+        "controller_server_enabled": True,
+        "rai_controller_running": rai_navigation_process is not None and rai_navigation_process.poll() is None,
     }
 
 
+@app.post("/api/rai-navigation/config")
 @app.post("/api/nav2/config")
-async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends(get_db)) -> dict:
-    _require_action("nav2")
+async def set_rai_navigation_config(request: RaiNavigationConfigRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("navigation")
+    global rai_navigation_process
     local_planner = request.local_planner.upper()
     global_planner = request.global_planner.upper()
-    if local_planner not in {item["id"] for item in NAV2_LOCAL_PLANNER_OPTIONS}:
+    if local_planner not in {item["id"] for item in RAI_CONTROLLER_OPTIONS}:
         raise HTTPException(status_code=400, detail=f"Unsupported local planner: {local_planner}")
-    if global_planner not in {item["id"] for item in NAV2_GLOBAL_PLANNER_OPTIONS}:
+    if global_planner not in {item["id"] for item in RAI_GLOBAL_PLANNER_OPTIONS}:
         raise HTTPException(status_code=400, detail=f"Unsupported global planner: {global_planner}")
 
     if request.map_id is not None:
@@ -860,54 +862,60 @@ async def set_nav2_config(request: Nav2ConfigRequest, db: AsyncSession = Depends
             raise HTTPException(status_code=404, detail="Saved map not found")
         if not saved_map.yaml_path:
             raise HTTPException(status_code=400, detail="Saved map does not have an exported YAML path")
-        nav2_runtime_config["map_path"] = saved_map.yaml_path
-        nav2_runtime_config["selected_map_id"] = saved_map.id
+        rai_navigation_runtime_config["map_path"] = saved_map.yaml_path
+        rai_navigation_runtime_config["selected_map_id"] = saved_map.id
 
     if request.map_path:
-        nav2_runtime_config["map_path"] = request.map_path
-        nav2_runtime_config["selected_map_id"] = None
+        rai_navigation_runtime_config["map_path"] = request.map_path
+        rai_navigation_runtime_config["selected_map_id"] = None
     if request.params_path:
-        nav2_runtime_config["params_path"] = request.params_path
-    nav2_runtime_config["local_planner"] = local_planner
-    nav2_runtime_config["global_planner"] = global_planner
-    return await nav2_config()
+        rai_navigation_runtime_config["params_path"] = request.params_path
+    rai_navigation_runtime_config["local_planner"] = local_planner
+    rai_navigation_runtime_config["global_planner"] = global_planner
+
+    if rai_navigation_process is not None and rai_navigation_process.poll() is None:
+        _stop_stack_process(rai_navigation_process, RAI_NAVIGATION_KILL_PATTERNS)
+        rai_navigation_process = None
+        return await start_rai_navigation_stack(db)
+    return await rai_navigation_config()
 
 
+@app.post("/api/rai-navigation/start")
 @app.post("/api/nav2/start")
-async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
-    _require_action("nav2")
-    global nav2_process
-    if nav2_process is not None and nav2_process.poll() is None:
-        return {"success": True, "message": "Nav2 is already running", **(await nav2_config())}
+async def start_rai_navigation_stack(db: AsyncSession = Depends(get_db)) -> dict:
+    _require_action("navigation")
+    global rai_navigation_process
+    if rai_navigation_process is not None and rai_navigation_process.poll() is None:
+        return {"success": True, "message": "RAI navigation is already running", **(await rai_navigation_config())}
 
-    if not nav2_runtime_config["map_path"]:
-        raise HTTPException(status_code=400, detail="No Nav2 map selected. Choose a saved map before starting Nav2.")
+    if not rai_navigation_runtime_config["map_path"]:
+        raise HTTPException(status_code=400, detail="No navigation map selected. Choose a saved map before starting RAI navigation.")
 
-    map_path = Path(nav2_runtime_config["map_path"])
+    map_path = Path(rai_navigation_runtime_config["map_path"])
     if not map_path.exists():
-        raise HTTPException(status_code=404, detail=f"Selected Nav2 map file not found: {map_path}")
+        raise HTTPException(status_code=404, detail=f"Selected navigation map file not found: {map_path}")
 
-    base_params_path = Path(nav2_runtime_config["params_path"] or _default_nav2_params_path())
+    base_params_path = Path(rai_navigation_runtime_config["params_path"] or _default_rai_navigation_params_path())
     if not base_params_path.exists():
-        raise HTTPException(status_code=404, detail=f"Nav2 params file not found: {base_params_path}")
+        raise HTTPException(status_code=404, detail=f"RAI navigation params file not found: {base_params_path}")
 
-    runtime_params_path = _runtime_nav2_params_path(
-        nav2_runtime_config["local_planner"],
-        nav2_runtime_config["global_planner"],
+    runtime_params_path = _runtime_rai_navigation_params_path(
+        rai_navigation_runtime_config["local_planner"],
+        rai_navigation_runtime_config["global_planner"],
         base_params_path,
     )
-    command = _nav2_launch_command(
+    command = _rai_navigation_launch_command(
         map_path,
         runtime_params_path,
-        nav2_runtime_config["local_planner"],
-        nav2_runtime_config["global_planner"],
+        rai_navigation_runtime_config["local_planner"],
+        rai_navigation_runtime_config["global_planner"],
     )
-    nav2_process = _start_process(command, env=_ros_runtime_env())
-    nav2_runtime_config["last_command"] = command
+    rai_navigation_process = _start_process(command, env=_ros_runtime_env())
+    rai_navigation_runtime_config["last_command"] = command
     anchor = None
     if bridge_node is not None:
         with bridge_node.lock:
-            bridge_node.telemetry["context"]["navigation_mode"] = "nav2"
+            bridge_node.telemetry["context"]["navigation_mode"] = "rai_navigation"
         anchor = bridge_node.get_anchor_state().get("initial_pose")
         if anchor is None:
             anchor = bridge_node.capture_current_pose_as_anchor(prefer_map=False, set_home=False)
@@ -915,23 +923,24 @@ async def start_nav2_stack(db: AsyncSession = Depends(get_db)) -> dict:
             _publish_anchor_pose_after_delay()
     return {
         "success": True,
-        "pid": nav2_process.pid,
+        "pid": rai_navigation_process.pid,
         "command": command,
         "initial_pose": anchor,
-        **(await nav2_config()),
+        **(await rai_navigation_config()),
     }
 
 
+@app.post("/api/rai-navigation/stop")
 @app.post("/api/nav2/stop")
-async def stop_nav2_stack() -> dict:
-    _require_action("nav2")
-    global nav2_process
-    result = _stop_stack_process(nav2_process, NAV2_KILL_PATTERNS)
-    nav2_process = None
+async def stop_rai_navigation_stack() -> dict:
+    _require_action("navigation")
+    global rai_navigation_process
+    result = _stop_stack_process(rai_navigation_process, RAI_NAVIGATION_KILL_PATTERNS)
+    rai_navigation_process = None
     if bridge_node is not None:
         with bridge_node.lock:
             bridge_node.telemetry["context"]["navigation_mode"] = "idle"
-    return {"success": True, **result, **(await nav2_config())}
+    return {"success": True, **result, **(await rai_navigation_config())}
 
 
 @app.post("/api/robot/slam/start")
@@ -1560,7 +1569,7 @@ def _ensure_dataset_layout() -> None:
         "metadata/robot_mecanum.yaml": {
             "robot": "rai_mecanum",
             "kinematics": "mecanum_omnidirectional",
-            "command_topic": "/cca_nmpc/cmd_vel",
+            "command_topic": "/cmd_vel",
             "precondition": "All robot, human, path, and costmap samples must be transformed into one control frame before metric extraction.",
         },
         "metadata/controllers.yaml": {
