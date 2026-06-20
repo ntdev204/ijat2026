@@ -76,11 +76,6 @@ ament_target_dependencies(rai_controller_server
 )
 target_link_libraries(rai_controller_server
   rai_controller_core
-  rai_controller_cca_nmpc
-  rai_planner
-  rai_planner_a_star
-  rai_planner_dijkstra
-  rai_planner_straight_line
   "${cpp_typesupport_target}"
 )
 
