@@ -15,7 +15,7 @@ RUN_INDEX_FIELDS = [
 ]
 
 DERIVED_HEADERS = {
-    "controller_timeseries.csv": [
+    "aggregates/controller_timeseries.csv": [
         "timestamp", "run_id", "scenario_id", "controller_id", "x_r", "y_r", "theta_r",
         "x_ref", "y_ref", "theta_ref", "tracking_error_xy", "tracking_error_theta",
         "vx_cmd", "vy_cmd", "omega_cmd", "vx_odom", "vy_odom", "omega_odom", "d_h",
@@ -24,22 +24,22 @@ DERIVED_HEADERS = {
         "evaluation_time_ms", "controller_status", "timeout_flag", "collision_flag",
         "occlusion_flag",
     ],
-    "human_states.csv": [
+    "aggregates/human_states.csv": [
         "timestamp", "run_id", "scenario_id", "human_id", "x_h", "y_h", "vx_h", "vy_h",
         "confidence", "age_sec", "cov_x", "cov_y", "cov_vx", "cov_vy", "x_h_gt",
         "y_h_gt", "vx_h_gt", "vy_h_gt",
     ],
-    "human_prediction.csv": [
+    "aggregates/human_prediction.csv": [
         "timestamp", "run_id", "scenario_id", "human_id", "horizon_i", "x_h_pred",
         "y_h_pred", "x_h_gt", "y_h_gt", "prediction_error",
     ],
-    "adaptation_timeseries.csv": [
+    "aggregates/adaptation_timeseries.csv": [
         "timestamp", "run_id", "scenario_id", "controller_id", "d_h", "phi_h", "d_safe",
         "vx_max_adaptive", "vy_max_adaptive", "omega_max_adaptive", "q_x_adaptive",
         "q_y_adaptive", "q_theta_adaptive", "vx_cmd", "vy_cmd", "omega_cmd",
         "occlusion_flag",
     ],
-    "metrics_per_run.csv": [
+    "aggregates/metrics_per_run.csv": [
         "run_id", "scenario_id", "controller_id", "environment", "success", "collision",
         "timeout", "duration_sec", "rmse_xy", "rmse_theta", "max_lateral_error", "d_min",
         "d_avg", "d_5percentile", "violation_count", "violation_duration",
@@ -48,7 +48,7 @@ DERIVED_HEADERS = {
         "solve_time_mean_ms", "solve_time_median_ms", "solve_time_p95_ms",
         "solve_time_max_ms", "timeout_rate",
     ],
-    "metrics_summary.csv": [
+    "aggregates/metrics_summary.csv": [
         "scenario_id", "controller_id", "environment", "n_runs", "success_rate",
         "collision_rate", "timeout_rate_mean", "rmse_xy_mean", "rmse_xy_std",
         "d_min_mean", "d_min_std", "solve_time_p95_mean_ms",
@@ -65,7 +65,7 @@ def parser(description: str) -> argparse.ArgumentParser:
 
 def ensure_layout(dataset: Path) -> None:
     for relative in [
-        "raw/sim", "raw/real", "derived", "metadata/calibration", "metadata/splits",
+        "raw/sim", "raw/real", "derived", "derived/aggregates", "metadata/calibration", "metadata/splits",
         "figures/system", "figures/trajectories", "figures/timeseries", "figures/boxplots",
         "figures/latency", "figures/ablation", "tables/csv", "tables/latex",
     ]:

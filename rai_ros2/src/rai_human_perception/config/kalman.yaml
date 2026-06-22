@@ -1,0 +1,7 @@
+rai_human_perception:
+  ros__parameters:
+    process_noise_position: 0.08
+    process_noise_velocity: 0.8
+    measurement_noise_position: 0.05
+    association_gate_m: 0.8
+    max_track_age_sec: 0.7

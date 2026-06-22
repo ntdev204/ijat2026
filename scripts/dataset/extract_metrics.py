@@ -15,11 +15,11 @@ def _float(value: str) -> float:
 
 
 def main() -> int:
-    args = parser("Compute metrics_per_run.csv and metrics_summary.csv from derived time series").parse_args()
+    args = parser("Compute metrics_per_run.csv and metrics_summary.csv from derived/aggregates time series").parse_args()
     dataset = Path(args.dataset)
     ensure_layout(dataset)
     run_index = read_csv(dataset / "metadata" / "run_index.csv")
-    controller_rows = read_csv(dataset / "derived" / "controller_timeseries.csv")
+    controller_rows = read_csv(dataset / "derived" / "aggregates" / "controller_timeseries.csv")
     by_run: dict[str, list[dict[str, str]]] = {}
     for row in controller_rows:
         by_run.setdefault(row.get("run_id", ""), []).append(row)
@@ -41,8 +41,8 @@ def main() -> int:
             "timeout_rate": sum(timeout_flags) / len(timeout_flags) if timeout_flags else "",
         })
 
-    write_csv(dataset / "derived" / "metrics_per_run.csv", DERIVED_HEADERS["metrics_per_run.csv"], metrics)
-    write_csv(dataset / "derived" / "metrics_summary.csv", DERIVED_HEADERS["metrics_summary.csv"], [])
+    write_csv(dataset / "derived" / "aggregates" / "metrics_per_run.csv", DERIVED_HEADERS["aggregates/metrics_per_run.csv"], metrics)
+    write_csv(dataset / "derived" / "aggregates" / "metrics_summary.csv", DERIVED_HEADERS["aggregates/metrics_summary.csv"], [])
     print_json({"metrics_per_run": len(metrics), "note": "Empty fields mean no extracted time-series rows were available."})
     return 0
 

@@ -1,11 +1,5 @@
 controllers:
   - id: CCA_NMPC
-    type: sampling_based_cca_predictive_control
-  - id: DWB
-    type: nav2_baseline
-  - id: MPPI
-    type: nav2_baseline
-  - id: TEB
-    type: external_baseline
-  - id: MANUAL
-    type: teleop_baseline
+    label: CCA-NMPC
+    group: proposed
+    description: Continuous Context-Aware NMPC with predictive human context

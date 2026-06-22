@@ -23,6 +23,8 @@
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/empty.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -51,6 +53,17 @@ namespace rai_controller
 {
 namespace
 {
+
+double yawFromPose(const geometry_msgs::msg::PoseStamped & pose)
+{
+  tf2::Quaternion q;
+  tf2::fromMsg(pose.pose.orientation, q);
+  double roll = 0.0;
+  double pitch = 0.0;
+  double yaw = 0.0;
+  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+  return yaw;
+}
 
 class CcaNmpcAlgorithm : public ControllerAlgorithm
 {
@@ -106,14 +119,24 @@ private:
     out.acc_lim_theta = config.acc_lim_theta;
     out.beta = config.beta;
     out.d0 = config.d0;
+    out.context_distance_weight = config.context_distance_weight;
+    out.context_velocity_weight = config.context_velocity_weight;
+    out.context_direction_weight = config.context_direction_weight;
+    out.context_confidence_weight = config.context_confidence_weight;
+    out.context_bias = config.context_bias;
+    out.human_velocity_max = config.human_velocity_max;
     out.d_safe_0 = config.d_safe_0;
     out.d_safe_max = config.d_safe_max;
+    out.k_d = config.k_d;
     out.vx_max_0 = config.vx_max_0;
     out.vy_max_0 = config.vy_max_0;
     out.omega_max_0 = config.omega_max_0;
     out.vx_max_min = config.vx_max_min;
     out.vy_max_min = config.vy_max_min;
     out.omega_max_min = config.omega_max_min;
+    out.k_vx = config.k_vx;
+    out.k_vy = config.k_vy;
+    out.k_omega = config.k_omega;
     out.q_x = config.q_x;
     out.q_y = config.q_y;
     out.q_theta = config.q_theta;
@@ -282,8 +305,8 @@ public:
     max_laser_age_sec_ = declare_parameter<double>("max_laser_age_sec", 0.5);
     use_imu_angular_velocity_ = declare_parameter<bool>("use_imu_angular_velocity", true);
     max_imu_age_sec_ = declare_parameter<double>("max_imu_age_sec", 0.5);
-    control_frequency_ = declare_parameter<double>("control_frequency", 20.0);
-    max_solver_time_ms_ = declare_parameter<double>("max_solver_time_ms", 50.0);
+    control_frequency_ = declare_parameter<double>("control_frequency", 25.0);
+    max_solver_time_ms_ = declare_parameter<double>("max_solver_time_ms", 35.0);
     active_controller_ = rai_controller::createController(active_controller_id_, loadCoreParameters());
     stop_on_stale_odom_sec_ = declare_parameter<double>("stop_on_stale_odom_sec", 0.5);
     stop_on_missing_plan_ = declare_parameter<bool>("stop_on_missing_plan", true);
@@ -504,14 +527,28 @@ private:
     p.acc_lim_theta = declare_parameter<double>("acc_lim_theta", p.acc_lim_theta);
     p.beta = declare_parameter<double>("beta", p.beta);
     p.d0 = declare_parameter<double>("d0", p.d0);
+    p.context_distance_weight = declare_parameter<double>(
+      "context_distance_weight", p.context_distance_weight);
+    p.context_velocity_weight = declare_parameter<double>(
+      "context_velocity_weight", p.context_velocity_weight);
+    p.context_direction_weight = declare_parameter<double>(
+      "context_direction_weight", p.context_direction_weight);
+    p.context_confidence_weight = declare_parameter<double>(
+      "context_confidence_weight", p.context_confidence_weight);
+    p.context_bias = declare_parameter<double>("context_bias", p.context_bias);
+    p.human_velocity_max = declare_parameter<double>("human_velocity_max", p.human_velocity_max);
     p.d_safe_0 = declare_parameter<double>("d_safe_0", p.d_safe_0);
     p.d_safe_max = declare_parameter<double>("d_safe_max", p.d_safe_max);
+    p.k_d = declare_parameter<double>("k_d", p.k_d);
     p.vx_max_0 = declare_parameter<double>("vx_max_0", p.vx_max_0);
     p.vy_max_0 = declare_parameter<double>("vy_max_0", p.vy_max_0);
     p.omega_max_0 = declare_parameter<double>("omega_max_0", p.omega_max_0);
     p.vx_max_min = declare_parameter<double>("vx_max_min", p.vx_max_min);
     p.vy_max_min = declare_parameter<double>("vy_max_min", p.vy_max_min);
     p.omega_max_min = declare_parameter<double>("omega_max_min", p.omega_max_min);
+    p.k_vx = declare_parameter<double>("k_vx", p.k_vx);
+    p.k_vy = declare_parameter<double>("k_vy", p.k_vy);
+    p.k_omega = declare_parameter<double>("k_omega", p.k_omega);
     p.q_x = declare_parameter<double>("q_x", p.q_x);
     p.q_y = declare_parameter<double>("q_y", p.q_y);
     p.q_theta = declare_parameter<double>("q_theta", p.q_theta);
@@ -1504,9 +1541,7 @@ private:
   {
     const double dx = robot_pose.pose.position.x - goal.pose.position.x;
     const double dy = robot_pose.pose.position.y - goal.pose.position.y;
-    const double yaw_error = normalizeAngle(
-      rai_controller_cca_nmpc::yawFromPose(robot_pose) -
-      rai_controller_cca_nmpc::yawFromPose(goal));
+    const double yaw_error = normalizeAngle(yawFromPose(robot_pose) - yawFromPose(goal));
     return std::hypot(dx, dy) <= goal_tolerance_xy_ && std::abs(yaw_error) <= goal_tolerance_yaw_;
   }
 
@@ -1623,8 +1658,8 @@ private:
   double max_laser_age_sec_{0.5};
   bool use_imu_angular_velocity_{true};
   double max_imu_age_sec_{0.5};
-  double control_frequency_{20.0};
-  double max_solver_time_ms_{50.0};
+  double control_frequency_{25.0};
+  double max_solver_time_ms_{35.0};
   double stop_on_stale_odom_sec_{0.5};
   bool stop_on_missing_plan_{true};
   double goal_tolerance_xy_{0.25};

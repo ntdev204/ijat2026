@@ -43,6 +43,8 @@ export interface RobotUiTelemetry {
     yaw: number | null;
   };
   navigation_mode: string | null;
+  human_count: number;
+  tracking_quality: number | null;
   plan: Array<{ x: number; y: number }>;
   local_plan: Array<{ x: number; y: number }>;
   humans: Array<{
@@ -105,6 +107,8 @@ export function normalizeRobotTelemetry(payload: RaiTelemetry | null | undefined
       speed: Math.sqrt(vx * vx + vy * vy),
       map_pose: { x: mapX ?? x, y: mapY ?? y, yaw: mapYaw ?? yaw },
       navigation_mode: typeof context.navigation_mode === "string" ? context.navigation_mode : null,
+      human_count: typeof context.human_count === "number" ? context.human_count : humans.length,
+      tracking_quality: numberOrNull(context.tracking_quality),
       plan: [],
       local_plan: [],
       humans: humans as RobotUiTelemetry["humans"],

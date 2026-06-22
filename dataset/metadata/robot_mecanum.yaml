@@ -1,4 +1,4 @@
 robot: rai_mecanum
 kinematics: mecanum_omnidirectional
-command_topic: /cca_nmpc/cmd_vel
+command_topic: /cmd_vel
 precondition: All robot, human, path, and costmap samples must be transformed into one control frame before metric extraction.

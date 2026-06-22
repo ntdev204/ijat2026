@@ -28,5 +28,5 @@ export RAI_DATASET_PATH=/home/rai/ijat2026/dataset
 sleep 2
 
 # 5. Execute ROS 2 Launch
-# Launches hardware layer, lidar, IMU, EKF, twist_mux, web API, and Nav2
-ros2 launch turn_on_rai_robot pi_runtime.launch.py with_nav2:=true
+# Only start the web control/API surface. Hardware launches are controlled from rai_website.
+ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 port:=8080

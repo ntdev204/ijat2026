@@ -1,4 +1,4 @@
-# Manual S1-S5 Scenarios - CCA-NMPC Dataset
+# Manual S1-S6 Scenarios - CCA-NMPC Dataset
 
 No validated map is available yet, so these scenarios are executed manually. The scenario labels are still mandatory for dataset organization.
 
@@ -24,13 +24,19 @@ Goal: collect smooth increase of `phi_h`, `d_safe`, and reduced adaptive velocit
 
 A human crosses the robot path.
 
-Goal: collect human velocity estimation and robot slowdown/side-step response.
+Goal: collect human velocity estimation, multi-human risk aggregation if needed, and robot slowdown/side-step response.
 
-## S5_occlusion_sudden_appearance
+## S5_occlusion
 
 A human appears from behind an occluding object or corner.
 
-Goal: collect reaction time, occlusion flag, fallback stop/slow behavior.
+Goal: collect reaction time, covariance-driven confidence drop, occlusion flag, fallback stop/slow behavior.
+
+## S6_human_approaching
+
+A human approaches the robot directly and then moves away along the same lane.
+
+Goal: compare approaching versus receding motion at similar distance to expose the effect of `cos(Delta theta)` on `phi_h`.
 
 ## Manual Start Example
 
@@ -47,7 +53,7 @@ ros2 launch rai_dataset_collection dataset_collection.launch.py \
 
 Record in notes or lab log:
 
-- Scenario label S1-S5.
+- Scenario label S1-S6.
 - Controller id.
 - Human actor behavior and approximate speed.
 - Any intervention or emergency stop.

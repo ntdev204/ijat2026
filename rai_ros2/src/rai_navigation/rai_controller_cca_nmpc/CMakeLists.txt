@@ -16,6 +16,7 @@ find_package(rclcpp REQUIRED)
 
 add_library(rai_controller_cca_nmpc
   src/ccanmpc_core.cpp
+  src/human_predictor.cpp
 )
 
 target_include_directories(rai_controller_cca_nmpc PUBLIC

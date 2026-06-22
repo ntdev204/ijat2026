@@ -1,2 +1,0 @@
-# Replaced by rai_navigation/waypoint_cycle.py (no Nav2 Action dependency).
-# Use: ros2 launch rai_robot_navigation bringup_launch.py enable_waypoint_cycle:=true

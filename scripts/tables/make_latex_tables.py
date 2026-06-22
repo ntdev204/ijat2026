@@ -12,10 +12,10 @@ def main() -> int:
     args = parser("Create CSV and LaTeX metric tables").parse_args()
     dataset = Path(args.dataset)
     ensure_layout(dataset)
-    rows = read_csv(dataset / "derived" / "metrics_per_run.csv")
+    rows = read_csv(dataset / "derived" / "aggregates" / "metrics_per_run.csv")
     csv_output = dataset / "tables" / "csv" / "metrics_per_run.csv"
     tex_output = dataset / "tables" / "latex" / "metrics_summary.tex"
-    csv_output.write_text((dataset / "derived" / "metrics_per_run.csv").read_text(encoding="utf-8"), encoding="utf-8")
+    csv_output.write_text((dataset / "derived" / "aggregates" / "metrics_per_run.csv").read_text(encoding="utf-8"), encoding="utf-8")
     tex_output.write_text(
         "% Auto-generated table placeholder. Fill after metrics_per_run.csv has numeric rows.\n"
         "\\begin{tabular}{lll}\nScenario & Controller & Runs \\\\\n"

@@ -32,23 +32,35 @@ class ContextMonitor(Node):
 
         self.declare_parameter('d0', 2.5)
         self.declare_parameter('beta', 3.0)
+        self.declare_parameter('context_distance_weight', 6.0)
+        self.declare_parameter('context_velocity_weight', 1.0)
+        self.declare_parameter('context_direction_weight', 1.0)
+        self.declare_parameter('context_confidence_weight', 0.5)
+        self.declare_parameter('context_bias', 0.0)
+        self.declare_parameter('human_velocity_max', 1.5)
         self.declare_parameter('d_min', 0.5)
         self.declare_parameter('k_d', 0.3)
-        self.declare_parameter('vx_max_0', 0.8)
-        self.declare_parameter('vy_max_0', 0.5)
+        self.declare_parameter('vx_max_0', 0.45)
+        self.declare_parameter('vy_max_0', 0.35)
         self.declare_parameter('omega_max_0', 1.0)
-        self.declare_parameter('k_vx', 0.45)
-        self.declare_parameter('k_vy', 0.30)
-        self.declare_parameter('k_omega', 0.55)
-        self.declare_parameter('vx_min_bound', 0.10)
-        self.declare_parameter('vy_min_bound', 0.08)
-        self.declare_parameter('omega_min_bound', 0.20)
+        self.declare_parameter('k_vx', 0.37)
+        self.declare_parameter('k_vy', 0.29)
+        self.declare_parameter('k_omega', 0.85)
+        self.declare_parameter('vx_min_bound', 0.08)
+        self.declare_parameter('vy_min_bound', 0.06)
+        self.declare_parameter('omega_min_bound', 0.15)
         self.declare_parameter('publish_legacy_context', True)
         self.declare_parameter('publish_pseudo_humans', False)
         self.declare_parameter('human_timeout_sec', 0.7)
 
         self.d0 = float(self.get_parameter('d0').value)
         self.beta = float(self.get_parameter('beta').value)
+        self.context_distance_weight = float(self.get_parameter('context_distance_weight').value)
+        self.context_velocity_weight = float(self.get_parameter('context_velocity_weight').value)
+        self.context_direction_weight = float(self.get_parameter('context_direction_weight').value)
+        self.context_confidence_weight = float(self.get_parameter('context_confidence_weight').value)
+        self.context_bias = float(self.get_parameter('context_bias').value)
+        self.human_velocity_max = float(self.get_parameter('human_velocity_max').value)
         self.d_min = float(self.get_parameter('d_min').value)
         self.k_d = float(self.get_parameter('k_d').value)
         self.vx_max_0 = float(self.get_parameter('vx_max_0').value)
@@ -65,6 +77,7 @@ class ContextMonitor(Node):
         self.human_timeout_sec = float(self.get_parameter('human_timeout_sec').value)
 
         self.robot_pose = {'x': 0.0, 'y': 0.0, 'theta': 0.0}
+        self.robot_velocity = {'vx': 0.0, 'vy': 0.0}
         self.phi_w = 5.0
         self.nearest_human_dist: Optional[float] = None
         self.last_human_time: Optional[float] = None
@@ -119,6 +132,13 @@ class ContextMonitor(Node):
             'x': msg.pose.pose.position.x,
             'y': msg.pose.pose.position.y,
             'theta': math.atan2(siny_cosp, cosy_cosp),
+        }
+        theta = self.robot_pose['theta']
+        vx_body = msg.twist.twist.linear.x
+        vy_body = msg.twist.twist.linear.y
+        self.robot_velocity = {
+            'vx': vx_body * math.cos(theta) - vy_body * math.sin(theta),
+            'vy': vx_body * math.sin(theta) + vy_body * math.cos(theta),
         }
 
     def scan_callback(self, msg: LaserScan):
@@ -217,14 +237,40 @@ class ContextMonitor(Node):
         return float(self.nearest_human_dist or 10.0)
 
     def _phi_h(self, distance: float) -> float:
-        return 1.0 / (1.0 + math.exp(self.beta * (distance - self.d0)))
+        confidence = float(self.human_state.get('confidence', 0.0))
+        if distance >= 10.0 or confidence <= 0.0:
+            return 0.0
+
+        hx = float(self.human_state.get('x', self.robot_pose['x']))
+        hy = float(self.human_state.get('y', self.robot_pose['y']))
+        hvx = float(self.human_state.get('vx', 0.0))
+        hvy = float(self.human_state.get('vy', 0.0))
+        speed = math.hypot(hvx, hvy)
+
+        ex = (self.robot_pose['x'] - hx) / max(distance, 1e-6)
+        ey = (self.robot_pose['y'] - hy) / max(distance, 1e-6)
+        rel_vx = hvx - self.robot_velocity['vx']
+        rel_vy = hvy - self.robot_velocity['vy']
+        rel_speed = math.hypot(rel_vx, rel_vy)
+        direction_cos = 0.0
+        if rel_speed > 1e-6:
+            direction_cos = max(-1.0, min(1.0, (rel_vx * ex + rel_vy * ey) / rel_speed))
+
+        z = (
+            self.context_distance_weight * ((self.d0 - distance) / max(self.d0, 1e-6))
+            + self.context_velocity_weight * (speed / max(self.human_velocity_max, 1e-6))
+            + self.context_direction_weight * direction_cos
+            + self.context_confidence_weight * confidence
+            + self.context_bias
+        )
+        return max(0.0, min(1.0, 1.0 / (1.0 + math.exp(-z))))
 
     def _adaptive_bounds(self, phi_h: float) -> dict:
         return {
-            'd_safe': self.d_min + self.k_d * phi_h,
-            'vx_max': self.vx_min_bound + (self.vx_max_0 - self.vx_min_bound) * (1.0 - phi_h),
-            'vy_max': self.vy_min_bound + (self.vy_max_0 - self.vy_min_bound) * (1.0 - phi_h),
-            'omega_max': self.omega_min_bound + (self.omega_max_0 - self.omega_min_bound) * (1.0 - phi_h),
+            'd_safe': min(self.d_min + self.k_d * phi_h, self.d_min + self.k_d),
+            'vx_max': max(self.vx_min_bound, self.vx_max_0 - self.k_vx * phi_h),
+            'vy_max': max(self.vy_min_bound, self.vy_max_0 - self.k_vy * phi_h),
+            'omega_max': max(self.omega_min_bound, self.omega_max_0 - self.k_omega * phi_h),
         }
 
     def _legacy_label(self, phi_h: float) -> str:

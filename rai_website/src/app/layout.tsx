@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { cn } from "@/lib/utils";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClientLogReporter } from "@/components/logging/ClientLogReporter";
 
@@ -27,6 +28,7 @@ export default function RootLayout({
         <AuthProvider>
           <TooltipProvider>
             <ClientLogReporter />
+            <Toaster richColors position="top-right" />
             {children}
           </TooltipProvider>
         </AuthProvider>

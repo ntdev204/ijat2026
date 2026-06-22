@@ -34,7 +34,7 @@ def generate_launch_description():
     scenario_arg = DeclareLaunchArgument(
         'scenario',
         default_value='S1_open_zone',
-        description='Manual protocol scenario label: S1_open_zone ... S5_occlusion_sudden_appearance'
+        description='Manual protocol scenario label: S1_open_zone ... S6_human_approaching'
     )
 
     controller_arg = DeclareLaunchArgument(
@@ -80,7 +80,7 @@ def generate_launch_description():
         msg='\n'
             '╔════════════════════════════════════════════════════════════╗\n'
             '║   CCA-NMPC Dataset Collection System                       ║\n'
-            '║   Manual S1-S5 protocol: continuous phi_h + Mecanum flow   ║\n'
+            '║   Manual S1-S6 protocol: continuous phi_h + Mecanum flow   ║\n'
             '╚════════════════════════════════════════════════════════════╝\n'
     )
 
@@ -111,6 +111,23 @@ def generate_launch_description():
                 parameters=[{
                     'use_sim_time': False,
                     'publish_legacy_context': True,
+                    'context_distance_weight': 6.0,
+                    'context_velocity_weight': 1.0,
+                    'context_direction_weight': 1.0,
+                    'context_confidence_weight': 0.5,
+                    'context_bias': 0.0,
+                    'human_velocity_max': 1.5,
+                    'd_min': 0.5,
+                    'k_d': 0.3,
+                    'vx_max_0': 0.45,
+                    'vy_max_0': 0.35,
+                    'omega_max_0': 1.0,
+                    'vx_min_bound': 0.08,
+                    'vy_min_bound': 0.06,
+                    'omega_min_bound': 0.15,
+                    'k_vx': 0.37,
+                    'k_vy': 0.29,
+                    'k_omega': 0.85,
                 }]
             ),
         ]
@@ -149,7 +166,7 @@ def generate_launch_description():
                     '✅ Dataset Collection System READY!\n'
                     '📹 Recording to: ~/rai_datasets/canmpc/\n'
                     '📊 Recording /canmpc/context, /canmpc/humans, adaptive bounds\n'
-                    '🎮 Execute S1-S5 manually. Map-based automation is disabled.\n'
+                    '🎮 Execute S1-S6 manually. Map-based automation is disabled.\n'
                     '\n'
                     '🚀 Starting data collection...\n'
             ),

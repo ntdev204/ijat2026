@@ -1,6 +1,6 @@
 """
 Dataset Collection Hardware Bringup Launch File
-Khởi động hardware (sensors, motors) để thu thập dataset CA-NMPC
+Khởi động hardware (sensors, motors) để thu thập dataset CCA-NMPC
 Được gọi từ rai_dataset_collection package
 """
 
@@ -23,9 +23,10 @@ def generate_launch_description():
     """
     Launch hardware layer for dataset collection:
     1. Cleanup existing processes
-    2. Start chassis + motors (rai_sensors)
-    3. Start LiDAR scan filter
+    2. Start chassis + motors
+    3. Start LiDAR
     4. Start RGB-D camera
+    5. Start LiDAR scan filter
     5. NO Navigation/SLAM (not needed for data collection)
     """
 
@@ -40,7 +41,7 @@ def generate_launch_description():
         description='Dataset collection mode: collection | validation'
     )
 
-    # Cleanup: Kill existing ROS2 processes (same as prod_bringup)
+    # Cleanup: Kill existing ROS2 processes before dataset bringup
     cleanup_processes = ExecuteProcess(
         cmd=['bash', '-c',
              'echo "[dataset_collection] Cleaning up existing processes..."; '
@@ -48,7 +49,8 @@ def generate_launch_description():
              'pkill -9 -x "lslidar_driver_node" 2>/dev/null || true; '
              'pkill -9 -x "ekf_node" 2>/dev/null || true; '
              'pkill -9 -f "slam_toolbox" 2>/dev/null || true; '
-             'pkill -9 -f "nav2" 2>/dev/null || true; '
+             'pkill -9 -f "rai_controller" 2>/dev/null || true; '
+             'pkill -9 -f "rai_navigation" 2>/dev/null || true; '
              'pkill -9 -f "astra" 2>/dev/null || true; '
              'echo "[dataset_collection] Waiting 2 seconds..."; '
              'sleep 2; '
@@ -58,29 +60,40 @@ def generate_launch_description():
 
     # Log start message
     log_start = LogInfo(
-        msg='[dataset_collection] Starting hardware layer for CA-NMPC dataset collection...'
+        msg='[dataset_collection] Starting hardware layer for CCA-NMPC dataset collection...'
     )
 
-    # 1. Base Hardware Layer (Chassis, Lidar, IMU, Encoders, TF)
-    # Same as prod_bringup rai_sensors
+    # 1. Base hardware layer
     hardware_layer = TimerAction(
         period=3.0,
         actions=[
             LogInfo(msg='[dataset_collection] Launching base hardware (chassis, sensors)...'),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
-                    os.path.join(rai_launch_dir, 'launch', 'rai_sensors.launch.py')
+                    os.path.join(rai_launch_dir, 'launch', 'turn_on_rai_robot.launch.py')
                 ),
                 launch_arguments={}.items()
             ),
         ]
     )
 
-    # 2. LiDAR Scan Filter
-    # Filters raw scans to remove robot body reflections
-    # Output: /scan_filtered (used by context detector)
-    lidar_filter = TimerAction(
+    # 2. LiDAR
+    lidar_node = TimerAction(
         period=5.0,
+        actions=[
+            LogInfo(msg='[dataset_collection] Launching LiDAR...'),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(rai_launch_dir, 'launch', 'rai_lidar.launch.py')
+                ),
+                launch_arguments={}.items()
+            ),
+        ]
+    )
+
+    # 3. LiDAR scan filter
+    lidar_filter = TimerAction(
+        period=7.0,
         actions=[
             LogInfo(msg='[dataset_collection] Starting LiDAR scan filter...'),
             Node(
@@ -99,39 +112,25 @@ def generate_launch_description():
         ]
     )
 
-    # 3. RGB-D Camera (Astra Camera)
-    # Provides RGB + Depth for YOLO v8 human detection
+    # 4. RGB-D Camera (Astra Camera)
+    # Provides RGB + Depth for YOLO human detection
     # Topics: /camera/color/image_raw, /camera/depth/image_raw
     camera_node = TimerAction(
         period=6.0,
         actions=[
             LogInfo(msg='[dataset_collection] Starting Astra RGB-D camera...'),
-            Node(
-                package='astra_camera',
-                executable='astra_camera_node',
-                name='astra_camera',
-                output='screen',
-                parameters=[{
-                    'color_width': 640,
-                    'color_height': 480,
-                    'color_fps': 30,
-                    'depth_width': 640,
-                    'depth_height': 480,
-                    'depth_fps': 30,
-                    'enable_color': True,
-                    'enable_depth': True,
-                    'enable_infra': False,
-                    'depth_registration': True,  # Align depth to color frame
-                }],
-                remappings=[
-                    ('/camera/color/image_raw', '/camera/color/image_raw'),
-                    ('/camera/depth/image_raw', '/camera/depth/image_raw'),
-                ]
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(rai_launch_dir, 'launch', 'rai_camera.launch.py')
+                ),
+                launch_arguments={
+                    'enable_depth': 'true',
+                }.items()
             ),
         ]
     )
 
-    # 4. Static TF: Camera → Base Link
+    # 5. Static TF: Camera → Base Link
     # Camera mounted at (0.15, 0.0, 0.25) with 6° depression angle
     camera_tf = TimerAction(
         period=7.0,
@@ -152,7 +151,7 @@ def generate_launch_description():
         ]
     )
 
-    # 5. Completion Log
+    # 6. Completion Log
     complete_log = TimerAction(
         period=10.0,
         actions=[
@@ -177,15 +176,18 @@ def generate_launch_description():
         # 1. Hardware layer (chassis, motors, lidar, imu, encoders)
         hardware_layer,
 
-        # 2. LiDAR filter
+        # 2. LiDAR
+        lidar_node,
+
+        # 3. LiDAR filter
         lidar_filter,
 
-        # 3. RGB-D camera
+        # 4. RGB-D camera
         camera_node,
 
-        # 4. Camera TF
+        # 5. Camera TF
         camera_tf,
 
-        # 5. Completion message
+        # 6. Completion message
         complete_log,
     ])

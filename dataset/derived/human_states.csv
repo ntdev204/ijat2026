@@ -1,1 +1,0 @@
-timestamp,run_id,scenario_id,human_id,x_h,y_h,vx_h,vy_h,confidence,age_sec,cov_x,cov_y,cov_vx,cov_vy,x_h_gt,y_h_gt,vx_h_gt,vy_h_gt

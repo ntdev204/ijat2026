@@ -10,6 +10,8 @@ from launch.substitutions import LaunchConfiguration
 
 def _camera_actions(context, *_args, **_kwargs):
     camera_type = context.perform_substitution(LaunchConfiguration("camera_type")).strip().lower()
+    enable_depth = context.perform_substitution(LaunchConfiguration("enable_depth")).strip().lower()
+    depth_enabled = "true" if enable_depth in {"1", "true", "yes", "on"} else "false"
     astra_dir = get_package_share_directory("astra_camera")
     astra_launch_dir = os.path.join(astra_dir, "launch")
 
@@ -24,20 +26,20 @@ def _camera_actions(context, *_args, **_kwargs):
                 "enable_color": "true",
                 "color_width": "640",
                 "color_height": "480",
-                "color_fps": "30",
-                "enable_depth": "false",
+                "color_fps": "25",
+                "enable_depth": depth_enabled,
                 "depth_width": "640",
                 "depth_height": "480",
-                "depth_fps": "15",
+                "depth_fps": "25",
                 "enable_ir": "false",
                 "enable_point_cloud": "false",
                 "enable_colored_point_cloud": "false",
-                "depth_registration": "false",
-                "color_depth_synchronization": "false",
+                "depth_registration": depth_enabled,
+                "color_depth_synchronization": depth_enabled,
                 "enable_d2c_viewer": "false",
                 "enable_publish_extrinsic": "false",
                 "publish_tf": "true",
-                "tf_publish_rate": "10.0",
+                "tf_publish_rate": "25.0",
                 "oni_log_level": "error",
                 "oni_log_to_console": "false",
                 "oni_log_to_file": "false",

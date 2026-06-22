@@ -7,11 +7,11 @@ from _common import ensure_layout, parser, print_json
 
 
 def main() -> int:
-    args = parser("Extract controller time series from rosbag2 into derived/controller_timeseries.csv").parse_args()
+    args = parser("Extract controller time series from rosbag2 into derived/aggregates/controller_timeseries.csv").parse_args()
     dataset = Path(args.dataset)
     ensure_layout(dataset)
     print_json({
-        "output": str(dataset / "derived" / "controller_timeseries.csv"),
+        "output": str(dataset / "derived" / "aggregates" / "controller_timeseries.csv"),
         "bag": args.bag,
         "message": "Schema exists; implement rosbag2_py extraction for production batch export.",
     })

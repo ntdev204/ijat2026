@@ -1,6 +1,7 @@
 #include "rai_controller_cca_nmpc/ccanmpc_core.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cmath>
@@ -137,7 +138,7 @@ geometry_msgs::msg::PoseStamped makePose(
 }
 
 CcanmpcCore::CcanmpcCore(CcanmpcParameters parameters)
-: params_(parameters)
+: params_(parameters), human_predictor_(params_)
 {
   params_.horizon_steps = std::max(4, params_.horizon_steps);
   params_.sample_time = std::clamp(params_.sample_time, 0.02, 0.25);
@@ -254,31 +255,6 @@ std::vector<geometry_msgs::msg::PoseStamped> CcanmpcCore::resampleReference(
   return reference;
 }
 
-double CcanmpcCore::nearestHumanDistance(
-  const std::vector<HumanState> & humans,
-  double x,
-  double y,
-  double time_from_now) const
-{
-  double nearest = std::numeric_limits<double>::infinity();
-  for (const auto & human : humans) {
-    if (human.confidence <= 0.0) {
-      continue;
-    }
-    if (human.age_sec > params_.max_human_age_sec) {
-      continue;
-    }
-    const double prediction_time = std::max(0.0, time_from_now - std::max(0.0, human.age_sec));
-    const double hx = human.x + human.vx * prediction_time;
-    const double hy = human.y + human.vy * prediction_time;
-    if (!std::isfinite(hx) || !std::isfinite(hy)) {
-      continue;
-    }
-    nearest = std::min(nearest, std::hypot(x - hx, y - hy));
-  }
-  return nearest;
-}
-
 double CcanmpcCore::occupancyCost(const nav_msgs::msg::OccupancyGrid * costmap, double x, double y) const
 {
   if (!costmap || costmap->data.empty() || costmap->info.resolution <= 0.0) {
@@ -304,34 +280,30 @@ double CcanmpcCore::occupancyCost(const nav_msgs::msg::OccupancyGrid * costmap, 
   return static_cast<double>(raw);
 }
 
-double CcanmpcCore::computePhi(double human_distance) const
-{
-  if (!std::isfinite(human_distance)) {
-    return 0.0;
-  }
-  return std::clamp(
-    1.0 / (1.0 + std::exp(params_.beta * (human_distance - params_.d0))),
-    0.0,
-    1.0);
-}
-
 ContextState CcanmpcCore::computeAdaptiveParameters(double phi_h) const
 {
   ContextState adaptive;
   adaptive.phi_h = std::clamp(phi_h, 0.0, 1.0);
+  const double d_safe_upper = std::min(params_.d_safe_max, params_.d_safe_0 + params_.k_d);
+  const double vx_lower = std::max(params_.vx_max_min, params_.vx_max_0 - params_.k_vx);
+  const double vy_lower = std::max(params_.vy_max_min, params_.vy_max_0 - params_.k_vy);
+  const double omega_lower = std::max(params_.omega_max_min, params_.omega_max_0 - params_.k_omega);
   adaptive.d_safe = std::clamp(
-    params_.d_safe_0 + (params_.d_safe_max - params_.d_safe_0) * adaptive.phi_h,
+    params_.d_safe_0 + params_.k_d * adaptive.phi_h,
     params_.d_safe_0,
-    params_.d_safe_max);
-  adaptive.vx_max = std::max(
-    params_.vx_max_min,
-    params_.vx_max_min + (params_.vx_max_0 - params_.vx_max_min) * (1.0 - adaptive.phi_h));
-  adaptive.vy_max = std::max(
-    params_.vy_max_min,
-    params_.vy_max_min + (params_.vy_max_0 - params_.vy_max_min) * (1.0 - adaptive.phi_h));
-  adaptive.omega_max = std::max(
-    params_.omega_max_min,
-    params_.omega_max_min + (params_.omega_max_0 - params_.omega_max_min) * (1.0 - adaptive.phi_h));
+    d_safe_upper);
+  adaptive.vx_max = std::clamp(
+    params_.vx_max_0 - params_.k_vx * adaptive.phi_h,
+    vx_lower,
+    params_.vx_max_0);
+  adaptive.vy_max = std::clamp(
+    params_.vy_max_0 - params_.k_vy * adaptive.phi_h,
+    vy_lower,
+    params_.vy_max_0);
+  adaptive.omega_max = std::clamp(
+    params_.omega_max_0 - params_.k_omega * adaptive.phi_h,
+    omega_lower,
+    params_.omega_max_0);
   return adaptive;
 }
 
@@ -359,6 +331,29 @@ ContextState CcanmpcCore::mergeExternalLimits(
   return merged;
 }
 
+double CcanmpcCore::adaptiveVelocityConstraintPenalty(
+  double vx,
+  double vy,
+  double omega,
+  const ContextState & adaptive,
+  bool & violated) const
+{
+  const double vx_violation = std::max(0.0, std::abs(vx) - adaptive.vx_max);
+  const double vy_violation = std::max(0.0, std::abs(vy) - adaptive.vy_max);
+  const double omega_violation = std::max(0.0, std::abs(omega) - adaptive.omega_max);
+  violated = vx_violation > 0.0 || vy_violation > 0.0 || omega_violation > 0.0;
+  if (!violated) {
+    return 0.0;
+  }
+
+  // Adaptive velocity constraints:
+  // |v_x| <= v_x,max(phi_h), |v_y| <= v_y,max(phi_h), |omega| <= omega_max(phi_h)
+  return params_.w_slack * (
+    vx_violation * vx_violation +
+    vy_violation * vy_violation +
+    omega_violation * omega_violation);
+}
+
 void CcanmpcCore::rolloutMecanumStep(
   double & x,
   double & y,
@@ -368,10 +363,21 @@ void CcanmpcCore::rolloutMecanumStep(
   double omega,
   double dt) const
 {
-  const double half_yaw = yaw + 0.5 * omega * dt;
-  x += (vx * std::cos(half_yaw) - vy * std::sin(half_yaw)) * dt;
-  y += (vx * std::sin(half_yaw) + vy * std::cos(half_yaw)) * dt;
-  yaw = normalizeAngle(yaw + omega * dt);
+  const auto derivative = [vx, vy, omega](double heading) {
+    return std::array<double, 3>{
+      vx * std::cos(heading) - vy * std::sin(heading),
+      vx * std::sin(heading) + vy * std::cos(heading),
+      omega};
+  };
+
+  const auto k1 = derivative(yaw);
+  const auto k2 = derivative(yaw + 0.5 * dt * k1[2]);
+  const auto k3 = derivative(yaw + 0.5 * dt * k2[2]);
+  const auto k4 = derivative(yaw + dt * k3[2]);
+
+  x += (dt / 6.0) * (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]);
+  y += (dt / 6.0) * (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]);
+  yaw = normalizeAngle(yaw + (dt / 6.0) * (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]));
 }
 
 double CcanmpcCore::scoreTrackingError(
@@ -416,10 +422,20 @@ SolveResult CcanmpcCore::solve(
     return result;
   }
 
-  const double nearest_now = nearestHumanDistance(
-    humans, robot_pose.pose.position.x, robot_pose.pose.position.y, 0.0);
-  const double measured_phi = computePhi(nearest_now);
-  result.phi_h = context.phi_h > 0.0 ? std::clamp(context.phi_h, 0.0, 1.0) : measured_phi;
+  const double yaw0 = finiteOr(yawFromPose(robot_pose), 0.0);
+  const double robot_vx_world =
+    robot_velocity.linear.x * std::cos(yaw0) - robot_velocity.linear.y * std::sin(yaw0);
+  const double robot_vy_world =
+    robot_velocity.linear.x * std::sin(yaw0) + robot_velocity.linear.y * std::cos(yaw0);
+  const auto measured_context = human_predictor_.predictHumanContext(
+    humans,
+    robot_pose.pose.position.x,
+    robot_pose.pose.position.y,
+    robot_vx_world,
+    robot_vy_world,
+    0.0);
+  const double measured_phi = measured_context.phi_h;
+  result.phi_h = std::max(std::clamp(context.phi_h, 0.0, 1.0), measured_phi);
   const ContextState adaptive = mergeExternalLimits(computeAdaptiveParameters(result.phi_h), context);
   result.q_scale = 1.0 + result.phi_h;
   result.d_safe = adaptive.d_safe;
@@ -435,7 +451,6 @@ SolveResult CcanmpcCore::solve(
 
   const double x0 = robot_pose.pose.position.x;
   const double y0 = robot_pose.pose.position.y;
-  const double yaw0 = finiteOr(yawFromPose(robot_pose), 0.0);
   const auto & lookahead = reference[std::min<size_t>(1, reference.size() - 1)];
   const double path_heading = std::atan2(
     lookahead.pose.position.y - y0,
@@ -569,23 +584,29 @@ SolveResult CcanmpcCore::solve(
           rolloutMecanumStep(x, y, yaw, vx, vy, omega, params_.sample_time);
 
           const auto & ref = reference[std::min(static_cast<size_t>(i), reference.size() - 1)];
-          const double human_dist = nearestHumanDistance(humans, x, y, i * params_.sample_time);
-          const double step_phi = computePhi(human_dist);
-          const ContextState step_adaptive = computeAdaptiveParameters(step_phi);
+          const double predicted_robot_vx_world = vx * std::cos(yaw) - vy * std::sin(yaw);
+          const double predicted_robot_vy_world = vx * std::sin(yaw) + vy * std::cos(yaw);
+          const auto step_context = human_predictor_.predictHumanContext(
+            humans,
+            x,
+            y,
+            predicted_robot_vx_world,
+            predicted_robot_vy_world,
+            i * params_.sample_time);
+          const double step_phi = step_context.phi_h;
+          const ContextState step_adaptive =
+            mergeExternalLimits(computeAdaptiveParameters(step_phi), context);
 
           score += scoreTrackingError(x, y, yaw, ref, step_phi);
           score += params_.r_vx * vx * vx + params_.r_vy * vy * vy + params_.r_omega * omega * omega;
 
-          const double vx_violation = std::max(0.0, std::abs(vx) - step_adaptive.vx_max);
-          const double vy_violation = std::max(0.0, std::abs(vy) - step_adaptive.vy_max);
-          const double omega_violation = std::max(0.0, std::abs(omega) - step_adaptive.omega_max);
-          if (vx_violation > 0.0 || vy_violation > 0.0 || omega_violation > 0.0) {
+          bool velocity_constraint_violated = false;
+          const double velocity_constraint_penalty = adaptiveVelocityConstraintPenalty(
+            vx, vy, omega, step_adaptive, velocity_constraint_violated);
+          if (velocity_constraint_violated) {
             collision = true;
             result.collision = true;
-            score += params_.w_slack * (
-              vx_violation * vx_violation +
-              vy_violation * vy_violation +
-              omega_violation * omega_violation);
+            score += velocity_constraint_penalty;
             break;
           }
 
@@ -598,16 +619,16 @@ SolveResult CcanmpcCore::solve(
           }
           score += params_.costmap_cost_weight * map_cost;
 
-          if (std::isfinite(human_dist)) {
-            if (human_dist < step_adaptive.d_safe) {
+          if (step_context.valid && std::isfinite(step_context.distance)) {
+            if (step_context.distance < step_adaptive.d_safe) {
               collision = true;
               result.collision = true;
-              score += params_.w_slack * std::pow(step_adaptive.d_safe - human_dist, 2.0);
+              score += params_.w_slack *
+                std::pow(step_adaptive.d_safe - step_context.distance, 2.0);
               break;
             }
-            if (human_dist < params_.d0) {
-              score += params_.human_cost_weight * std::pow(params_.d0 - human_dist, 2.0);
-            }
+            score += params_.human_cost_weight * step_phi *
+              std::pow(std::max(0.0, params_.d0 - step_context.distance), 2.0);
           }
 
           rollout.poses.push_back(makePose(rollout.header.frame_id, robot_pose.header.stamp, x, y, yaw));

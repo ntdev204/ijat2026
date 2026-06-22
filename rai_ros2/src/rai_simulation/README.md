@@ -1,6 +1,6 @@
 # RAI Simulation Automation & Repeatable Scenarios (Phases 8 & 9)
 
-This package contains the simulation worlds, actor definitions, and the automated batch runner for evaluating the **Continuous Context-Adaptive CA-NMPC (CCA-NMPC)** algorithm.
+This package contains the simulation worlds, actor definitions, and the automated batch runner for evaluating the **Continuous Context-Aware NMPC (CCA-NMPC)** algorithm.
 
 ## Package Structure
 
@@ -24,10 +24,10 @@ rai_ros2/src/rai_simulation/
 
 ## Running the Automated Batch trials
 
-To run the batch simulation trials automatically (20 runs per scenario, 100 runs total):
+To run the batch simulation trials automatically with a fixed run count per scenario:
 
 ```bash
-python3 rai_ros2/src/rai_simulation/rai_scenario_runner/scenario_runner.py --controller CCA_NMPC --runs 20
+python3 rai_ros2/src/rai_simulation/rai_scenario_runner/scenario_runner.py --controller CCA_NMPC --runs 30
 ```
 
 ### Script Execution Flow

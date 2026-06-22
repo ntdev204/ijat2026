@@ -2,12 +2,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useOperationMode } from "@/contexts/OperationModeContext";
 import { useMapNavigation } from "@/hooks/useMapNavigation";
 import type { MapPayload } from "@/types/robot-runtime";
 import { Map as MapIcon, Navigation, Pencil, Radar, RefreshCw, Save, Square, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 export default function MapPage() {
+  const { operationMode } = useOperationMode();
   const runtime = useMapNavigation();
   const {
     busy,
@@ -27,7 +29,7 @@ export default function MapPage() {
     stopSlam,
     systemRuntime,
   } = runtime;
-  const slamAllowed = systemRuntime?.allowed_actions.includes("slam") ?? true;
+  const slamAllowed = (systemRuntime?.allowed_actions.includes("slam") ?? true) && operationMode !== "sim";
 
   return (
     <div className="space-y-5">
@@ -37,13 +39,16 @@ export default function MapPage() {
           <p className="text-sm text-slate-500">
             {currentMap ? `${currentMap.width}x${currentMap.height} @ ${currentMap.resolution}m` : status}
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {operationMode === "sim" ? "SLAM and map saving are disabled in Simulation mode." : "Map controls follow the shared system mode."}
+          </p>
           {systemRuntime && (
             <p className="mt-1 text-xs text-slate-500">
               API target: {systemRuntime.device_label} ({systemRuntime.device_role})
             </p>
           )}
         </div>
-        <Button variant="outline" className="gap-2" disabled={busy} onClick={() => void loadMaps()}>
+        <Button variant="outline" className="gap-2 self-start sm:self-auto" disabled={busy} onClick={() => void loadMaps()}>
           <RefreshCw className="size-4" />
           Refresh
         </Button>
@@ -55,7 +60,7 @@ export default function MapPage() {
             <MapIcon className="size-4 text-blue-600" />
             <span className="font-medium text-slate-800">Mapping Workspace</span>
           </div>
-          <div className="flex min-h-[520px] items-center justify-center overflow-auto bg-slate-100 p-4">
+          <div className="flex min-h-[320px] items-center justify-center overflow-auto bg-slate-100 p-3 sm:min-h-[520px] sm:p-4">
             {currentMap ? (
               <canvas
                 ref={canvasRef}
@@ -101,7 +106,7 @@ function SlamPanel({ busy, slamAllowed, slamRunning, startSlam, stopSlam }: Slam
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">SLAM / Scan</h3>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 max-sm:[&_[data-slot=button]]:flex-1">
         <Button type="button" className="gap-2" disabled={busy || !slamAllowed || slamRunning} onClick={() => void startSlam()}>
           <Radar className="size-4" />
           Start SLAM
@@ -203,7 +208,7 @@ function SavedMapsPanel({ busy, maps, deleteSavedMap, renameSavedMap, selectSave
                   </Button>
                 </div>
               ) : (
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2 max-sm:[&_[data-slot=button]]:flex-1">
                   <Button type="button" variant="outline" size="sm" className="gap-2" disabled={busy || item.id == null} onClick={() => startEditing(item)}>
                     <Pencil className="size-4" />
                     Rename

@@ -1,0 +1,34 @@
+rai_human_perception:
+  ros__parameters:
+    rgb_topic: /camera/color/image_raw
+    depth_topic: /camera/depth/image_raw
+    camera_info_topic: /camera/color/camera_info
+    odom_topic: /odom
+    target_frame: map
+    humans_topic: /cca_nmpc/humans
+    controller_humans_topic: /canmpc/humans
+    context_input_topic: /cca_nmpc/context_input
+
+    weights_path: models/best.pt
+    onnx_path: models/best.onnx
+    engine_path: models/best.engine
+    export_script: ""
+    auto_export_engine: true
+    fp16: true
+    imgsz: 640
+    confidence_threshold: 0.35
+    nms_threshold: 0.45
+
+    depth_scale: 0.001
+    depth_center_ratio: 0.45
+    min_depth_m: 0.25
+    max_depth_m: 6.0
+    tf_timeout_sec: 0.05
+
+    debug_image_topic: /perception/debug/image
+    debug_depth_topic: /perception/debug/depth
+    debug_tracks_topic: /perception/debug/tracks
+    debug_latency_topic: /perception/debug/latency
+
+    enable_csv_logging: true
+    csv_path: /tmp/rai_human_perception.csv

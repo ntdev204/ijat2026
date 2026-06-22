@@ -1,8 +1,8 @@
 # RAI Navigation Contract
 
-`rai_navigation` is the RAI navigation stack bringup package. It plays the same role as a small `navigation2-humble` style stack, but it is implemented from scratch and does not depend on Nav2 packages, Nav2 actions, Nav2 lifecycle nodes, Nav2 costmap, or Nav2 controller plugins.
+`rai_navigation` is the RAI navigation stack bringup package. It provides the full local runtime for map serving, planning, and control, and it is implemented from scratch without external Nav2 packages.
 
-For static scanned-map navigation, `rai_map_server.py` replaces `nav2_map_server`: it reads a ROS map `.yaml` plus image file and publishes `/map` as `nav_msgs/OccupancyGrid` with transient-local QoS.
+For static scanned-map navigation, `rai_map_server.py` reads a ROS map `.yaml` plus image file and publishes `/map` as `nav_msgs/OccupancyGrid` with transient-local QoS.
 
 ## Packages
 

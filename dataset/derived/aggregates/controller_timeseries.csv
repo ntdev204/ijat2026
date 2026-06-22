@@ -1,0 +1,1 @@
+timestamp,run_id,scenario_id,controller_id,x_r,y_r,theta_r,x_ref,y_ref,theta_ref,tracking_error_xy,tracking_error_theta,vx_cmd,vy_cmd,omega_cmd,vx_odom,vy_odom,omega_odom,d_h,phi_h,d_safe,vx_max_adaptive,vy_max_adaptive,omega_max_adaptive,q_x_adaptive,q_y_adaptive,q_theta_adaptive,sample_count,evaluation_time_ms,controller_status,timeout_flag,collision_flag,occlusion_flag

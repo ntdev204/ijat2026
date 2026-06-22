@@ -1,6 +1,6 @@
 # RAI Navigation Stack
 
-This directory is the standalone RAI navigation stack, packaged like a small `navigation2-humble` source tree but without Nav2 dependencies.
+This directory is the standalone RAI navigation stack, implemented independently and without Nav2 dependencies.
 
 Packages:
 

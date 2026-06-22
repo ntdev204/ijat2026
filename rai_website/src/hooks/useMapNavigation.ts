@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
+import { useOperationMode } from "@/contexts/OperationModeContext";
 import { drawOccupancyMap } from "@/lib/map-canvas";
 import { writeSelectedMapId } from "@/lib/map-selection";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
@@ -28,6 +29,7 @@ export interface MapNavigationRuntime {
 }
 
 export function useMapNavigation(): MapNavigationRuntime {
+  const { runtime } = useOperationMode();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [maps, setMaps] = useState<MapPayload[]>([]);
   const [systemRuntime, setSystemRuntime] = useState<SystemRuntime | null>(null);
@@ -61,13 +63,11 @@ export function useMapNavigation(): MapNavigationRuntime {
 
   const loadMaps = useCallback(async () => {
     try {
-      const runtimeResponse = await fetchWithAuth("/api/system/runtime");
-      const runtime = (await runtimeResponse.json()) as SystemRuntime;
       setSystemRuntime(runtime);
-      if (!runtime.allowed_actions.includes("maps")) {
+      if (!runtime || !runtime.allowed_actions.includes("maps")) {
         setMaps([]);
         setCurrentMap(null);
-        setStatus(`Map/SLAM controls are disabled on ${runtime.device_label} (${runtime.device_role}).`);
+        setStatus(runtime ? `Map/SLAM controls are disabled on ${runtime.device_label} (${runtime.device_role}).` : "Waiting for system runtime.");
         return;
       }
       const response = await fetchWithAuth("/api/map/list");
@@ -81,7 +81,7 @@ export function useMapNavigation(): MapNavigationRuntime {
     } catch {
       setMaps([]);
     }
-  }, [currentMap]);
+  }, [currentMap, runtime]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type MouseEvent, type RefObject } fro
 import { ApiError, fetchWithAuth } from "@/lib/api";
 import { drawOccupancyMap, pixelToWorld, type PoseMarker } from "@/lib/map-canvas";
 import type { RobotUiTelemetry } from "@/lib/robot-telemetry";
-import type { MapPayload, Nav2Config, PathsPayload, Pose2D, RobotAnchors } from "@/types/robot-runtime";
+import type { MapPayload, PathsPayload, Pose2D, RaiNavigationConfig, RobotAnchors } from "@/types/robot-runtime";
 
 type PoseSelectionMode = "route_goal" | "initial_pose" | "home_pose" | null;
 
@@ -37,7 +37,7 @@ export function useMonitorRouteControl(
   mapData: MapPayload | null,
   telemetry: RobotUiTelemetry | null,
   paths: PathsPayload,
-  nav2Config: Nav2Config,
+  raiNavigationConfig: RaiNavigationConfig,
 ) : MonitorRouteControlRuntime {
   const [busy, setBusy] = useState(false);
   const [routeGoalPose, setRouteGoalPose] = useState<Pose2D | null>(null);
@@ -72,22 +72,22 @@ export function useMonitorRouteControl(
     });
   }, [anchors, canvasRef, mapData, paths, routeGoalPose, telemetry]);
 
-  function openRouteSelection() {
+  const openRouteSelection = useCallback(() => {
     setSelectionMode("route_goal");
     setStatusMessage("Click goal point on the monitor map.");
-  }
+  }, []);
 
-  function openInitialPoseSelection() {
+  const openInitialPoseSelection = useCallback(() => {
     setSelectionMode("initial_pose");
     setStatusMessage("Click initial pose on the monitor map.");
-  }
+  }, []);
 
-  function openHomePoseSelection() {
+  const openHomePoseSelection = useCallback(() => {
     setSelectionMode("home_pose");
     setStatusMessage("Click home pose on the monitor map.");
-  }
+  }, []);
 
-  function handleMapClick(event: MouseEvent<HTMLCanvasElement>) {
+  const handleMapClick = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
     if (!selectionMode || !mapData) {
       setStatusMessage("Use Set Goal, Set Initial Pose, or Set Home before clicking the monitor map.");
       return;
@@ -106,15 +106,15 @@ export function useMonitorRouteControl(
       yaw: routeGoalPose?.yaw ?? 0,
     });
     setPoseDialogOpen(true);
-  }
+  }, [canvasRef, mapData, routeGoalPose?.yaw, selectionMode]);
 
-  function closePoseDialog() {
+  const closePoseDialog = useCallback(() => {
     setPoseDialogOpen(false);
     setPoseDraft(null);
     setSelectionMode(null);
-  }
+  }, []);
 
-  async function confirmPoseDraft() {
+  const confirmPoseDraft = useCallback(async () => {
     if (!poseDraft) return;
     setBusy(true);
     try {
@@ -152,10 +152,10 @@ export function useMonitorRouteControl(
       setPoseDialogOpen(false);
       setPoseDraft(null);
     }
-  }
+  }, [anchors.home_pose, poseDraft, selectionMode]);
 
-  async function runSelectedRoute() {
-    if (!nav2Config.running) {
+  const runSelectedRoute = useCallback(async () => {
+    if (!raiNavigationConfig.running) {
       setStatusMessage("RAI Navigation is not running. Start it before sending a goal.");
       return;
     }
@@ -176,10 +176,10 @@ export function useMonitorRouteControl(
     } finally {
       setBusy(false);
     }
-  }
+  }, [raiNavigationConfig.running, routeGoalPose]);
 
-  async function goHome() {
-    if (!nav2Config.running) {
+  const goHome = useCallback(async () => {
+    if (!raiNavigationConfig.running) {
       setStatusMessage("RAI Navigation is not running. Start it before going home.");
       return;
     }
@@ -193,9 +193,9 @@ export function useMonitorRouteControl(
     } finally {
       setBusy(false);
     }
-  }
+  }, [raiNavigationConfig.running]);
 
-  async function cancelGoal() {
+  const cancelGoal = useCallback(async () => {
     setBusy(true);
     try {
       await fetchWithAuth("/api/robot/nav/cancel", { method: "POST" });
@@ -205,15 +205,15 @@ export function useMonitorRouteControl(
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
 
-  function clearRoute() {
+  const clearRoute = useCallback(() => {
     setRouteGoalPose(null);
     setSelectionMode(null);
     setPoseDialogOpen(false);
     setPoseDraft(null);
     setStatusMessage("Route points cleared.");
-  }
+  }, []);
 
   return {
     anchors,

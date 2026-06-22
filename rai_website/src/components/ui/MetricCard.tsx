@@ -13,14 +13,14 @@ interface MetricCardProps {
 
 export function MetricCard({ title, value, icon, trend, className }: MetricCardProps) {
   return (
-    <div className={cn("bg-white rounded-xl border border-slate-200 p-6 shadow-sm", className)}>
+    <div className={cn("rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6", className)}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-500 tracking-tight">{title}</h3>
         {icon && <div className="text-slate-400">{icon}</div>}
       </div>
       
       <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-bold text-slate-900">{value}</span>
+        <span className="break-words text-2xl font-bold text-slate-900 sm:text-3xl">{value}</span>
         
         {trend && (
           <span

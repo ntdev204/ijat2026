@@ -1,0 +1,6 @@
+std_msgs/Header header
+
+float64 nearest_human_distance
+float64 relative_speed
+int32 human_count
+float64 tracking_quality

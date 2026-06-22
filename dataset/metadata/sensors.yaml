@@ -7,15 +7,15 @@ required_topics:
   - /tf_static
   - /cmd_vel
   - /cmd_vel_web
-  - /cca_nmpc/cmd_vel
   - /canmpc/context
   - /canmpc/humans
   - /canmpc/adaptive_bounds
   - /canmpc/predicted_trajectory
   - /canmpc/local_reference_path
   - /canmpc/solver_stats
-  - /local_costmap/costmap
-  - /local_costmap/published_footprint
+  - /rai_navigation/status
+  - /rai_navigation/global_path
+  - /rai_navigation/local_costmap
 optional_camera_topics:
   - /camera/color/image_raw
   - /camera/depth/image_rect_raw

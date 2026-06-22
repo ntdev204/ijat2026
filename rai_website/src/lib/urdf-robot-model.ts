@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { resolveApiEndpoint } from "@/lib/api";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 type LinkVisual = {
@@ -15,7 +16,7 @@ type JointTransform = {
 };
 
 const stlLoader = new STLLoader();
-let robotModelPromise: Promise<THREE.Group> | null = null;
+const robotModelPromises = new Map<string, Promise<THREE.Group>>();
 
 function parseVector(value: string | null | undefined) {
   const parts = (value ?? "0 0 0")
@@ -33,12 +34,12 @@ function parseColor(value: string | null | undefined) {
   return new THREE.Color(parts[0] ?? 0.85, parts[1] ?? 0.85, parts[2] ?? 0.85);
 }
 
-function packageMeshToPublicPath(filename: string) {
-  return filename.replace("package://rai_robot_urdf/", "/robot-model/");
+function packageMeshToAssetPath(filename: string) {
+  return filename.replace(/^package:\/\/rai_robot_urdf\//, "");
 }
 
-async function buildRobotModel() {
-  const response = await fetch("/robot-model/mini_mec_robot.urdf");
+async function buildRobotModel(modelId: string) {
+  const response = await fetch(resolveApiEndpoint(`/api/robot-models/${encodeURIComponent(modelId)}/urdf`));
   if (!response.ok) {
     throw new Error("Cannot load robot URDF");
   }
@@ -55,7 +56,7 @@ async function buildRobotModel() {
 
     links.set(linkName, {
       color: parseColor(linkNode.querySelector("visual material color")?.getAttribute("rgba")),
-      meshPath: packageMeshToPublicPath(meshNode.getAttribute("filename") ?? ""),
+      meshPath: resolveApiEndpoint(`/api/robot-models/assets/${packageMeshToAssetPath(meshNode.getAttribute("filename") ?? "")}`),
       originPosition: new THREE.Vector3(...parseVector(linkNode.querySelector("visual origin")?.getAttribute("xyz"))),
       originRotation: new THREE.Euler(...parseVector(linkNode.querySelector("visual origin")?.getAttribute("rpy")), "XYZ"),
     });
@@ -124,10 +125,13 @@ async function buildRobotModel() {
   return group;
 }
 
-export async function loadRobotModel() {
-  if (!robotModelPromise) {
-    robotModelPromise = buildRobotModel();
+export async function loadRobotModel(modelId: string) {
+  if (!robotModelPromises.has(modelId)) {
+    robotModelPromises.set(modelId, buildRobotModel(modelId));
   }
-  const model = await robotModelPromise;
+  const model = await robotModelPromises.get(modelId);
+  if (!model) {
+    throw new Error("Cannot load robot model");
+  }
   return model.clone(true);
 }

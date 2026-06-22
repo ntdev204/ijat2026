@@ -16,7 +16,7 @@
 #   4) Click on double points ".." button on top-right next to power button to undock.
 #
 #   5) Move the robot:
-#     b) By sending goals with RVIZ's "Nav2 Goal" button in action bar.
+#     b) By sending goals with the active RViz goal tool or the web dashboard route controls.
 #     a) By teleoperating:
 #        $ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 #     c) By using autonomous exploration node (tested with https://github.com/robo-friends/m-explore-ros2):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Automated Scenario Batch Runner for CCA-NMPC Gazebo Experiments (Phase 9.1).
-Automates the execution of 20 runs for each scenario S1-S5 (100 runs total).
+Automates repeated execution of the configured scenario set for controller benchmarking.
 """
 
 import os
@@ -151,7 +151,7 @@ class TrialMonitorNode(Node):
         # Start a thread to move the actor from y = 6.0 to y = 5.0 at 1.2 m/s
         # Distance = 1.0m, Velocity = 1.2 m/s, Duration = 1.0 / 1.2 = 0.833 seconds
         def move_thread():
-            rate = self.create_rate(20) # 20 Hz
+            rate = self.create_rate(25) # 25 Hz
             start_time = time.time()
             duration = 1.0 / 1.2
             
@@ -358,11 +358,11 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Automated Gazebo scenario batch runner for CA-NMPC experiments.")
+    parser = argparse.ArgumentParser(description="Automated Gazebo scenario batch runner for CCA-NMPC benchmark experiments.")
     parser.add_argument("--scenarios", type=str, nargs="+", default=["S1", "S2", "S3", "S4", "S5"], help="Scenarios to run (e.g. S1 S2 S3 S4 S5)")
-    parser.add_argument("--controller", type=str, default="CCA_NMPC", help="Controller package identity (e.g. CCA_NMPC, DWA, TEB)")
+    parser.add_argument("--controller", type=str, default="CCA_NMPC", help="Controller id (CCA_NMPC, NMPC, MPPI, DWA, DWB, TEB)")
     parser.add_argument("--global-planner", type=str, default="A_STAR", help="Global planner: A_STAR, DIJKSTRA, STRAIGHT_LINE")
-    parser.add_argument("--runs", type=int, default=20, help="Number of runs per scenario (default: 20)")
+    parser.add_argument("--runs", type=int, default=30, help="Number of runs per scenario (default: 30)")
     parser.add_argument("--seed", type=int, default=42, help="Seed value for reproducibility")
     args = parser.parse_args()
     

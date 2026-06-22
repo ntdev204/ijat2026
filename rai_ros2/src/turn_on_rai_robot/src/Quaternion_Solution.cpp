@@ -1,6 +1,6 @@
 
 #include "turn_on_rai_robot/Quaternion_Solution.h"
-#define SAMPLING_FREQ 20.0f // 采样频率
+#define SAMPLING_FREQ 25.0f // 采样频率
 /**************************************
 Date: May 31, 2020
 Function: 平方根倒数 求四元数用到

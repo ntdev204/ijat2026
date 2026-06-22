@@ -1,15 +1,37 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { DropdownField } from "@/components/ui/dropdown-field";
+import { Input } from "@/components/ui/input";
+import { useOperationMode } from "@/contexts/OperationModeContext";
 import { useRvizRuntime } from "@/hooks/useRvizRuntime";
-import type { MapPayload, PathsPayload } from "@/types/robot-runtime";
+import type { MapPayload, PathsPayload, RobotModelOption, RvizTopics } from "@/types/robot-runtime";
 import type { RobotUiTelemetry } from "@/lib/robot-telemetry";
-import { Bot, Compass, Map as MapIcon, RefreshCw, ScanSearch, Users, Waypoints } from "lucide-react";
+import { Bot, Compass, Map as MapIcon, RefreshCw, Save, ScanSearch, Users, Waypoints } from "lucide-react";
 import type { RefObject } from "react";
 
 export default function Rviz2Page() {
+  const { operationMode } = useOperationMode();
   const rviz = useRvizRuntime();
-  const { currentMap, loadMaps, maps, mountRef, paths, selectSavedMap, setViewMode, status, telemetry, viewMode } = rviz;
+  const {
+    currentMap,
+    applyTopics,
+    loadMaps,
+    maps,
+    mountRef,
+    paths,
+    robotModels,
+    selectedRobotModelId,
+    selectRobotModel,
+    selectSavedMap,
+    setTopicDraft,
+    setViewMode,
+    status,
+    telemetry,
+    topicDraft,
+    topics,
+    viewMode,
+  } = rviz;
 
   return (
     <div className="space-y-5">
@@ -17,8 +39,11 @@ export default function Rviz2Page() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-800">RViz2 View</h2>
           <p className="text-sm text-slate-500">Map, TF-style robot model, planners, and live scene overlays in an RViz-oriented viewer.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {operationMode === "real" ? "RViz is available as a live inspection view." : operationMode === "hybrid" ? "RViz is available for hybrid overlay workflows." : "RViz stays in read-oriented simulation mode."}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 max-sm:[&_[data-slot=button]]:flex-1">
           <Button variant={viewMode === "perspective" ? "default" : "outline"} className="gap-2" onClick={() => setViewMode("perspective")}>
             <Compass className="size-4" />
             Perspective
@@ -40,7 +65,21 @@ export default function Rviz2Page() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <RvizScene mountRef={mountRef} />
-        <RvizSidebar currentMap={currentMap} maps={maps} paths={paths} selectSavedMap={selectSavedMap} status={status} telemetry={telemetry} />
+        <RvizSidebar
+          currentMap={currentMap}
+          maps={maps}
+          paths={paths}
+          robotModels={robotModels}
+          selectedRobotModelId={selectedRobotModelId}
+          selectRobotModel={selectRobotModel}
+          selectSavedMap={selectSavedMap}
+          setTopicDraft={setTopicDraft}
+          status={status}
+          telemetry={telemetry}
+          topicDraft={topicDraft}
+          topics={topics}
+          applyTopics={applyTopics}
+        />
       </div>
     </div>
   );
@@ -58,7 +97,7 @@ function RvizScene({ mountRef }: RvizSceneProps) {
         <span className="font-medium text-slate-800">RViz2 Scene</span>
         <span className="ml-auto text-xs text-slate-400">Grid + Map + TF + Path + Humans</span>
       </div>
-      <div ref={mountRef} className="h-[760px] w-full bg-slate-100" />
+      <div ref={mountRef} className="h-[420px] w-full bg-slate-100 sm:h-[560px] xl:h-[760px]" />
     </section>
   );
 }
@@ -67,15 +106,43 @@ interface RvizSidebarProps {
   currentMap: MapPayload | null;
   maps: MapPayload[];
   paths: PathsPayload;
+  robotModels: RobotModelOption[];
+  selectedRobotModelId: string;
+  selectRobotModel: (modelId: string) => void;
   selectSavedMap: (map: MapPayload) => Promise<void>;
+  setTopicDraft: (value: RvizTopics) => void;
   status: string;
   telemetry: RobotUiTelemetry | null;
+  topicDraft: RvizTopics;
+  topics: RvizTopics;
+  applyTopics: () => Promise<void>;
 }
 
-function RvizSidebar({ currentMap, maps, paths, selectSavedMap, status, telemetry }: RvizSidebarProps) {
+function RvizSidebar({
+  currentMap,
+  maps,
+  paths,
+  robotModels,
+  selectedRobotModelId,
+  selectRobotModel,
+  selectSavedMap,
+  setTopicDraft,
+  status,
+  telemetry,
+  topicDraft,
+  topics,
+  applyTopics,
+}: RvizSidebarProps) {
   return (
     <aside className="space-y-4">
-      <RobotPanel currentMap={currentMap} telemetry={telemetry} />
+      <RobotPanel
+        currentMap={currentMap}
+        robotModels={robotModels}
+        selectedRobotModelId={selectedRobotModelId}
+        selectRobotModel={selectRobotModel}
+        telemetry={telemetry}
+      />
+      <TopicPanel applyTopics={applyTopics} setTopicDraft={setTopicDraft} topicDraft={topicDraft} topics={topics} />
       <RuntimePanel paths={paths} telemetry={telemetry} />
       <SavedMapsPanel maps={maps} selectSavedMap={selectSavedMap} />
       <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">{status}</section>
@@ -83,18 +150,80 @@ function RvizSidebar({ currentMap, maps, paths, selectSavedMap, status, telemetr
   );
 }
 
-function RobotPanel({ currentMap, telemetry }: { currentMap: MapPayload | null; telemetry: RobotUiTelemetry | null }) {
+function TopicPanel({
+  applyTopics,
+  setTopicDraft,
+  topicDraft,
+  topics,
+}: {
+  applyTopics: () => Promise<void>;
+  setTopicDraft: (value: RvizTopics) => void;
+  topicDraft: RvizTopics;
+  topics: RvizTopics;
+}) {
+  const updateField = (key: keyof RvizTopics, value: string) => setTopicDraft({ ...topicDraft, [key]: value });
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">Topics</h3>
+      <div className="space-y-2">
+        <TopicInput label="Map" value={topicDraft.map_topic} onChange={(value) => updateField("map_topic", value)} />
+        <TopicInput label="Global path" value={topicDraft.global_path_topic} onChange={(value) => updateField("global_path_topic", value)} />
+        <TopicInput label="Local path" value={topicDraft.local_path_topic} onChange={(value) => updateField("local_path_topic", value)} />
+        <Button type="button" variant="outline" className="w-full gap-2" onClick={() => void applyTopics()}>
+          <Save className="size-4" />
+          Apply Topics
+        </Button>
+        <p className="text-xs text-slate-400">
+          Active: {topics.map_topic}, {topics.global_path_topic}, {topics.local_path_topic}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function TopicInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <Input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 font-mono text-xs" />
+    </label>
+  );
+}
+
+function RobotPanel({
+  currentMap,
+  robotModels,
+  selectedRobotModelId,
+  selectRobotModel,
+  telemetry,
+}: {
+  currentMap: MapPayload | null;
+  robotModels: RobotModelOption[];
+  selectedRobotModelId: string;
+  selectRobotModel: (modelId: string) => void;
+  telemetry: RobotUiTelemetry | null;
+}) {
+  const selectedModel = robotModels.find((model) => model.id === selectedRobotModelId);
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">Robot Model</h3>
       <div className="space-y-2 text-sm text-slate-600">
-        <div className="flex items-center gap-2">
+        <label className="block">
+          <span className="text-xs font-medium text-slate-500">URDF model</span>
+          <DropdownField
+            value={selectedRobotModelId}
+            onValueChange={selectRobotModel}
+            options={robotModels.map((model) => ({ value: model.id, label: model.label }))}
+            placeholder="Select robot model"
+          />
+        </label>
+        <div className="flex min-w-0 items-center gap-2">
           <Bot className="size-4 text-emerald-600" />
-          <span>URDF: `mini_mec_robot.urdf` with preserved `base_link` origin</span>
+          <span className="min-w-0 break-words">URDF: `{selectedModel?.urdf_path ?? `${selectedRobotModelId}.urdf`}`</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <MapIcon className="size-4 text-blue-600" />
-          <span>{currentMap ? `${currentMap.width}x${currentMap.height} @ ${currentMap.resolution}m` : "No map loaded"}</span>
+          <span className="min-w-0 break-words">{currentMap ? `${currentMap.width}x${currentMap.height} @ ${currentMap.resolution}m` : "No map loaded"}</span>
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Pose: x={formatPose(telemetry?.map_pose.x)}, y={formatPose(telemetry?.map_pose.y)}, yaw={formatPose(telemetry?.map_pose.yaw)}

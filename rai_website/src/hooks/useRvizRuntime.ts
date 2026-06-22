@@ -4,16 +4,18 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject, type R
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { fetchWithAuth } from "@/lib/api";
+import { useOperationMode } from "@/contexts/OperationModeContext";
 import { createRvizMapTexture } from "@/lib/rviz-map-texture";
 import { normalizeRobotTelemetry, type RobotUiTelemetry } from "@/lib/robot-telemetry";
 import { loadRobotModel } from "@/lib/urdf-robot-model";
-import type { MapPayload, PathsPayload, RvizViewMode } from "@/types/robot-runtime";
+import type { MapPayload, PathsPayload, RobotModelOption, RvizTopics, RvizViewMode } from "@/types/robot-runtime";
 import * as THREE from "three";
 
 interface RenderState {
   globalKey: string;
   localKey: string;
   humansKey: string;
+  perspectiveKey: string;
 }
 
 interface SceneRefs {
@@ -31,14 +33,22 @@ export interface RvizRuntime {
   currentMap: MapPayload | null;
   telemetry: RobotUiTelemetry | null;
   paths: PathsPayload;
+  robotModels: RobotModelOption[];
+  selectedRobotModelId: string;
+  topics: RvizTopics;
+  topicDraft: RvizTopics;
   status: string;
   viewMode: RvizViewMode;
   setViewMode: (value: RvizViewMode) => void;
+  selectRobotModel: (modelId: string) => void;
+  setTopicDraft: (value: RvizTopics) => void;
+  applyTopics: () => Promise<void>;
   loadMaps: () => Promise<void>;
   selectSavedMap: (map: MapPayload) => Promise<void>;
 }
 
 export function useRvizRuntime(): RvizRuntime {
+  const { operationMode } = useOperationMode();
   const mountRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -52,7 +62,7 @@ export function useRvizRuntime(): RvizRuntime {
   const humansRef = useRef<THREE.Group | null>(null);
   const robotAxisRef = useRef<THREE.AxesHelper | null>(null);
   const footprintRef = useRef<THREE.LineLoop | null>(null);
-  const renderStateRef = useRef<RenderState>({ globalKey: "", localKey: "", humansKey: "" });
+  const renderStateRef = useRef<RenderState>({ globalKey: "", localKey: "", humansKey: "", perspectiveKey: "" });
   const telemetryRef = useRef<RobotUiTelemetry | null>(null);
   const pathsRef = useRef<PathsPayload>({});
   const currentMapRef = useRef<MapPayload | null>(null);
@@ -62,6 +72,18 @@ export function useRvizRuntime(): RvizRuntime {
   const [currentMap, setCurrentMap] = useState<MapPayload | null>(null);
   const [telemetry, setTelemetry] = useState<RobotUiTelemetry | null>(null);
   const [paths, setPaths] = useState<PathsPayload>({});
+  const [robotModels, setRobotModels] = useState<RobotModelOption[]>([]);
+  const [selectedRobotModelId, setSelectedRobotModelId] = useState("mini_mec_robot");
+  const [topics, setTopics] = useState<RvizTopics>({
+    map_topic: "/map",
+    global_path_topic: "/rai_navigation/global_path",
+    local_path_topic: "/canmpc/predicted_trajectory",
+  });
+  const [topicDraft, setTopicDraft] = useState<RvizTopics>({
+    map_topic: "/map",
+    global_path_topic: "/rai_navigation/global_path",
+    local_path_topic: "/canmpc/predicted_trajectory",
+  });
   const [status, setStatus] = useState("Waiting for map, TF, and live robot pose.");
   const [viewMode, setViewMode] = useState<RvizViewMode>("perspective");
 
@@ -131,12 +153,61 @@ export function useRvizRuntime(): RvizRuntime {
     setCurrentMap((await response.json()) as MapPayload);
   }, []);
 
+  const loadRobotModels = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/robot-models");
+      const models = (await response.json()) as RobotModelOption[];
+      setRobotModels(models);
+      if (models.length > 0 && !models.some((model) => model.id === selectedRobotModelId)) {
+        setSelectedRobotModelId(models[0].id);
+      }
+    } catch {
+      setRobotModels([]);
+    }
+  }, [selectedRobotModelId]);
+
+  const loadTopics = useCallback(async () => {
+    try {
+      const response = await fetchWithAuth("/api/rviz/topics");
+      const payload = (await response.json()) as RvizTopics;
+      setTopics(payload);
+      setTopicDraft(payload);
+    } catch {
+      setTopics({
+        map_topic: "/map",
+        global_path_topic: "/rai_navigation/global_path",
+        local_path_topic: "/canmpc/predicted_trajectory",
+      });
+    }
+  }, []);
+
+  const applyTopics = useCallback(async () => {
+    if (operationMode === "sim") {
+      setStatus("RViz topic changes are disabled in Simulation mode.");
+      return;
+    }
+    try {
+      const response = await fetchWithAuth("/api/rviz/topics", {
+        method: "POST",
+        body: JSON.stringify(topicDraft),
+      });
+      const payload = (await response.json()) as RvizTopics;
+      setTopics(payload);
+      setTopicDraft(payload);
+      setStatus("RViz topic subscriptions updated.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to update RViz topics.");
+    }
+  }, [operationMode, topicDraft]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadMaps();
+      void loadRobotModels();
+      void loadTopics();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadMaps]);
+  }, [loadMaps, loadRobotModels, loadTopics]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -152,9 +223,11 @@ export function useRvizRuntime(): RvizRuntime {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
     controls.minDistance = 0.25;
     controls.maxDistance = 80;
+    controls.screenSpacePanning = true;
 
     sceneRef.current = scene;
     cameraRef.current = camera;
@@ -163,16 +236,6 @@ export function useRvizRuntime(): RvizRuntime {
     mount.appendChild(renderer.domElement);
 
     addSceneActors(scene, { floorRef, textureRef, pathRefs, humansRef, robotAxisRef, footprintRef });
-
-    let disposed = false;
-    void loadRobotModel()
-      .then((robot) => {
-        if (disposed) return;
-        robotRef.current = robot;
-        scene.add(robot);
-        setStatus("RViz2 viewer ready. URDF loaded with base_link origin preserved.");
-      })
-      .catch(() => setStatus("Cannot load URDF robot model."));
 
     const resize = () => resizeRenderer(mountRef, rendererRef, cameraRef);
     const renderFrame = () => {
@@ -200,16 +263,44 @@ export function useRvizRuntime(): RvizRuntime {
     renderFrame();
 
     return () => {
-      disposed = true;
       window.removeEventListener("resize", resize);
       if (animationRef.current != null) cancelAnimationFrame(animationRef.current);
       controls.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
+      disposeRobot(robotRef.current);
       disposeTextureRef(textureRef);
       scene.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    let disposed = false;
+    setStatus(`Loading ${selectedRobotModelId}.urdf...`);
+    void loadRobotModel(selectedRobotModelId)
+      .then((robot) => {
+        if (disposed) {
+          disposeRobot(robot);
+          return;
+        }
+        if (robotRef.current) {
+          scene.remove(robotRef.current);
+          disposeRobot(robotRef.current);
+        }
+        robotRef.current = robot;
+        scene.add(robot);
+        updateFootprintFromRobot(footprintRef.current, robot);
+        setStatus(`RViz2 viewer ready. ${selectedRobotModelId}.urdf loaded with base_link origin preserved.`);
+      })
+      .catch(() => setStatus(`Cannot load ${selectedRobotModelId}.urdf.`));
+
+    return () => {
+      disposed = true;
+    };
+  }, [selectedRobotModelId]);
 
   useEffect(() => {
     updateMapFloor(sceneRef, floorRef, textureRef, currentMap);
@@ -221,9 +312,16 @@ export function useRvizRuntime(): RvizRuntime {
     currentMap,
     telemetry,
     paths,
+    robotModels,
+    selectedRobotModelId,
+    topics,
+    topicDraft,
     status,
     viewMode,
     setViewMode,
+    selectRobotModel: setSelectedRobotModelId,
+    setTopicDraft,
+    applyTopics,
     loadMaps,
     selectSavedMap,
   };
@@ -268,18 +366,26 @@ function addSceneActors(scene: THREE.Scene, refs: SceneRefs) {
   refs.robotAxisRef.current = robotAxis;
   scene.add(robotAxis);
 
-  const footprintPoints = [
-    new THREE.Vector3(0.125, 0.105, 0.01),
-    new THREE.Vector3(0.125, -0.105, 0.01),
-    new THREE.Vector3(-0.125, -0.105, 0.01),
-    new THREE.Vector3(-0.125, 0.105, 0.01),
-  ];
   const footprint = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(footprintPoints),
+    new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({ color: 0x0f766e }),
   );
   refs.footprintRef.current = footprint;
   scene.add(footprint);
+}
+
+function updateFootprintFromRobot(footprint: THREE.LineLoop | null, robot: THREE.Group) {
+  if (!footprint) return;
+  const bounds = new THREE.Box3().setFromObject(robot);
+  if (!Number.isFinite(bounds.min.x) || !Number.isFinite(bounds.max.x)) return;
+  const points = [
+    new THREE.Vector3(bounds.max.x, bounds.max.y, 0.01),
+    new THREE.Vector3(bounds.max.x, bounds.min.y, 0.01),
+    new THREE.Vector3(bounds.min.x, bounds.min.y, 0.01),
+    new THREE.Vector3(bounds.min.x, bounds.max.y, 0.01),
+  ];
+  footprint.geometry.dispose();
+  footprint.geometry = new THREE.BufferGeometry().setFromPoints(points);
 }
 
 function resizeRenderer(
@@ -324,7 +430,7 @@ function renderRvizFrame({
 }) {
   if (!map) return;
 
-  updateCamera(viewMode, camera, controls, map, telemetry);
+  updateCamera(viewMode, camera, controls, map, telemetry, renderState);
   updateRobot(robot, robotAxis, footprint, telemetry);
   updatePathLine(pathLines.global, paths.global_plan ?? [], "globalKey", renderState, 0.03);
   updatePathLine(pathLines.local, paths.local_plan ?? [], "localKey", renderState, 0.05);
@@ -337,6 +443,7 @@ function updateCamera(
   controls: OrbitControls,
   map: MapPayload,
   telemetry: RobotUiTelemetry | null,
+  renderState: RenderState,
 ) {
   const centerX = map.origin_x + (map.width * map.resolution) / 2;
   const centerY = map.origin_y + (map.height * map.resolution) / 2;
@@ -344,9 +451,8 @@ function updateCamera(
   const targetX = telemetry?.map_pose.x ?? centerX;
   const targetY = telemetry?.map_pose.y ?? centerY;
 
-  controls.target.set(targetX, targetY, 0.05);
-
   if (viewMode === "top") {
+    controls.target.set(targetX, targetY, 0.05);
     camera.position.set(targetX, targetY, Math.max(3.5, span * 1.2));
     camera.up.set(0, 1, 0);
     camera.lookAt(targetX, targetY, 0);
@@ -354,6 +460,7 @@ function updateCamera(
   }
 
   if (viewMode === "follow") {
+    controls.target.set(targetX, targetY, 0.05);
     const yaw = telemetry?.map_pose.yaw ?? 0;
     const followDistance = Math.max(1.0, span * 0.18);
     camera.position.set(
@@ -365,8 +472,14 @@ function updateCamera(
     return;
   }
 
-  camera.position.set(centerX - span * 0.42, centerY - span * 0.58, Math.max(2.2, span * 0.84));
-  camera.lookAt(targetX, targetY, 0.04);
+  const perspectiveKey = `${map.origin_x}:${map.origin_y}:${map.width}:${map.height}:${map.resolution}`;
+  if (renderState.perspectiveKey !== perspectiveKey) {
+    controls.target.set(targetX, targetY, 0.05);
+    camera.up.set(0, 0, 1);
+    camera.position.set(centerX - span * 0.42, centerY - span * 0.58, Math.max(2.2, span * 0.84));
+    camera.lookAt(targetX, targetY, 0.04);
+    renderState.perspectiveKey = perspectiveKey;
+  }
 }
 
 function updateRobot(
@@ -479,4 +592,14 @@ function updateMapFloor(
 function disposeTextureRef(textureRef: RefObject<THREE.Texture | null>) {
   textureRef.current?.dispose();
   textureRef.current = null;
+}
+
+function disposeRobot(robot: THREE.Group | null) {
+  if (!robot) return;
+  robot.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    if (Array.isArray(child.material)) child.material.forEach((item) => item.dispose());
+    else child.material.dispose();
+  });
 }

@@ -31,7 +31,7 @@ class RobotConfig(Base):
     max_angular_z = Column(Float, nullable=False, default=1.0)
     battery_min_v = Column(Float, nullable=False, default=20.0)
     battery_max_v = Column(Float, nullable=False, default=25.2)
-    camera_fps = Column(Integer, nullable=False, default=15)
+    camera_fps = Column(Integer, nullable=False, default=25)
     active_map = Column(String(100), nullable=True)
     is_slam_active = Column(Boolean, nullable=False, default=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -44,8 +44,14 @@ class DatasetScenario(Base):
     context_type = Column(String(30), nullable=False, default='CONTINUOUS')
     difficulty = Column(String(20), nullable=False, default='medium')
     human_mode = Column(String(50), nullable=True)
-    expected_runs = Column(Integer, nullable=False, default=20)
+    expected_runs = Column(Integer, nullable=False, default=30)
     description = Column(Text, nullable=True)
+    scientific_goal = Column(Text, nullable=True)
+    layout = Column(Text, nullable=True)
+    human_count = Column(String(50), nullable=True)
+    human_speed = Column(String(50), nullable=True)
+    human_trajectory = Column(Text, nullable=True)
+    primary_metric = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class DatasetRun(Base):
@@ -93,6 +99,28 @@ class DatasetRun(Base):
     solve_time_median_ms = Column(Float, nullable=True)
     solve_time_p95_ms = Column(Float, nullable=True)
     solve_time_max_ms = Column(Float, nullable=True)
+    solve_time_std_ms = Column(Float, nullable=True)
+    mean_phi_h = Column(Float, nullable=True)
+    peak_phi_h = Column(Float, nullable=True)
+    context_activation_duration = Column(Float, nullable=True)
+    adaptive_distance_gain = Column(Float, nullable=True)
+    adaptive_velocity_reduction = Column(Float, nullable=True)
+    path_length = Column(Float, nullable=True)
+    travel_time = Column(Float, nullable=True)
+    goal_reaching_rate = Column(Float, nullable=True)
+    near_miss_count = Column(Integer, nullable=True)
+    time_to_collision = Column(Float, nullable=True)
+    control_energy = Column(Float, nullable=True)
+    sample_count_mean = Column(Float, nullable=True)
+    real_time_factor = Column(Float, nullable=True)
+    prediction_rmse = Column(Float, nullable=True)
+    prediction_mae = Column(Float, nullable=True)
+    prediction_horizon_error = Column(Float, nullable=True)
+    velocity_prediction_error = Column(Float, nullable=True)
+    detection_precision = Column(Float, nullable=True)
+    detection_recall = Column(Float, nullable=True)
+    tracking_rate = Column(Float, nullable=True)
+    id_switches = Column(Float, nullable=True)
     start_voltage = Column(Float, nullable=True)
     end_voltage = Column(Float, nullable=True)
     min_voltage = Column(Float, nullable=True)
@@ -121,6 +149,14 @@ class SystemLog(Base):
     level = Column(String(10), nullable=False)
     component = Column(String(50), nullable=False)
     message = Column(Text, nullable=False)
+
+
+class RuntimeSetting(Base):
+    __tablename__ = 'runtime_settings'
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SavedMap(Base):
@@ -181,7 +217,13 @@ async def _ensure_schema_columns(conn):
     table_columns = {
         'dataset_scenarios': [
             ('human_mode', 'VARCHAR(50)'),
-            ('expected_runs', 'INTEGER DEFAULT 20'),
+            ('expected_runs', 'INTEGER DEFAULT 30'),
+            ('scientific_goal', 'TEXT'),
+            ('layout', 'TEXT'),
+            ('human_count', 'VARCHAR(50)'),
+            ('human_speed', 'VARCHAR(50)'),
+            ('human_trajectory', 'TEXT'),
+            ('primary_metric', 'VARCHAR(100)'),
         ],
         'dataset_runs': [
             ('environment', "VARCHAR(20) DEFAULT 'real'"),
@@ -216,6 +258,28 @@ async def _ensure_schema_columns(conn):
             ('solve_time_median_ms', 'FLOAT'),
             ('solve_time_p95_ms', 'FLOAT'),
             ('solve_time_max_ms', 'FLOAT'),
+            ('solve_time_std_ms', 'FLOAT'),
+            ('mean_phi_h', 'FLOAT'),
+            ('peak_phi_h', 'FLOAT'),
+            ('context_activation_duration', 'FLOAT'),
+            ('adaptive_distance_gain', 'FLOAT'),
+            ('adaptive_velocity_reduction', 'FLOAT'),
+            ('path_length', 'FLOAT'),
+            ('travel_time', 'FLOAT'),
+            ('goal_reaching_rate', 'FLOAT'),
+            ('near_miss_count', 'INTEGER'),
+            ('time_to_collision', 'FLOAT'),
+            ('control_energy', 'FLOAT'),
+            ('sample_count_mean', 'FLOAT'),
+            ('real_time_factor', 'FLOAT'),
+            ('prediction_rmse', 'FLOAT'),
+            ('prediction_mae', 'FLOAT'),
+            ('prediction_horizon_error', 'FLOAT'),
+            ('velocity_prediction_error', 'FLOAT'),
+            ('detection_precision', 'FLOAT'),
+            ('detection_recall', 'FLOAT'),
+            ('tracking_rate', 'FLOAT'),
+            ('id_switches', 'FLOAT'),
         ],
         'saved_maps': [
             ('yaml_path', 'VARCHAR(250)'),
@@ -275,7 +339,7 @@ async def seed_initial_data():
                 max_angular_z=1.0,
                 battery_min_v=20.0,
                 battery_max_v=25.2,
-                camera_fps=15,
+                camera_fps=25,
                 is_slam_active=False
             )
             session.add(config)
@@ -287,47 +351,104 @@ async def seed_initial_data():
                 context_type="CONTINUOUS",
                 difficulty="easy",
                 human_mode="none",
-                expected_runs=20,
+                expected_runs=30,
                 description="Manual open-zone protocol; no close human, low phi_h expected.",
+                scientific_goal="Validate nominal low-context tracking behavior.",
+                layout="Open zone with wide clearance.",
+                human_count="0-1 distant humans",
+                human_speed="0.0-0.3 m/s",
+                human_trajectory="None or far from robot path",
+                primary_metric="tracking rmse_xy",
             ),
             DatasetScenario(
                 name="S2_narrow_corridor",
                 context_type="CONTINUOUS",
                 difficulty="medium",
                 human_mode="none",
-                expected_runs=20,
+                expected_runs=30,
                 description="Manual narrow-corridor/aisle protocol; collect clearance and lateral Mecanum behavior.",
+                scientific_goal="Evaluate adaptive limits under geometric constraint.",
+                layout="Narrow corridor or aisle.",
+                human_count="0-1",
+                human_speed="0.0-0.5 m/s",
+                human_trajectory="Static side occupancy or slow parallel motion",
+                primary_metric="minimum_human_distance",
             ),
             DatasetScenario(
                 name="S3_human_proximate",
                 context_type="CONTINUOUS",
                 difficulty="hard",
                 human_mode="static_or_slow",
-                expected_runs=20,
+                expected_runs=40,
                 description="Manual human-proximate protocol; collect continuous safety adaptation near a person.",
+                scientific_goal="Show continuous context increase near humans.",
+                layout="Path with nearby static or slow pedestrian.",
+                human_count="1-2",
+                human_speed="0.0-0.4 m/s",
+                human_trajectory="Static or slow drift near path",
+                primary_metric="mean_context_phi_h",
             ),
             DatasetScenario(
                 name="S4_dynamic_crossing",
                 context_type="CONTINUOUS",
                 difficulty="hard",
                 human_mode="dynamic_crossing",
-                expected_runs=20,
+                expected_runs=50,
                 description="Manual dynamic crossing protocol; collect human velocity estimation and robot response.",
+                scientific_goal="Validate predictive human context during crossing conflict.",
+                layout="Crossing intersection with lateral pedestrian motion.",
+                human_count="1-2",
+                human_speed="0.4-1.2 m/s",
+                human_trajectory="Left-right or right-left crossing",
+                primary_metric="prediction_rmse",
             ),
             DatasetScenario(
-                name="S5_occlusion_sudden_appearance",
+                name="S5_occlusion",
                 context_type="CONTINUOUS",
                 difficulty="stress",
                 human_mode="sudden_appearance",
-                expected_runs=20,
+                expected_runs=50,
                 description="Manual occlusion/sudden-appearance protocol; collect reaction and fallback behavior.",
+                scientific_goal="Stress covariance-aware confidence and fallback behavior.",
+                layout="Human appears from hidden area behind occluder.",
+                human_count="1-2",
+                human_speed="0.3-1.0 m/s",
+                human_trajectory="Sudden appearance",
+                primary_metric="context_response_time",
+            ),
+            DatasetScenario(
+                name="S6_human_approaching",
+                context_type="CONTINUOUS",
+                difficulty="critical",
+                human_mode="approaching_vs_receding",
+                expected_runs=60,
+                description="Human directly approaches and then moves away from the robot to expose directional context effects.",
+                scientific_goal="Demonstrate the effect of cos(delta_theta) at similar distances.",
+                layout="Frontal lane for head-on and receding human motion.",
+                human_count="1",
+                human_speed="0.5-1.2 m/s",
+                human_trajectory="Approaching and receding on robot axis",
+                primary_metric="relative_heading_vs_phi_h",
             ),
         ]
 
         for scenario in scenario_specs:
             result = await session.execute(select(DatasetScenario).where(DatasetScenario.name == scenario.name))
-            if not result.scalars().first():
+            existing = result.scalars().first()
+            if not existing:
                 session.add(scenario)
-        logger.info("Ensured 5 manual S1-S5 CCA-NMPC dataset scenarios exist.")
+            else:
+                existing.context_type = scenario.context_type
+                existing.difficulty = scenario.difficulty
+                existing.human_mode = scenario.human_mode
+                existing.expected_runs = scenario.expected_runs
+                existing.description = scenario.description
+                existing.scientific_goal = scenario.scientific_goal
+                existing.layout = scenario.layout
+                existing.human_count = scenario.human_count
+                existing.human_speed = scenario.human_speed
+                existing.human_trajectory = scenario.human_trajectory
+                existing.primary_metric = scenario.primary_metric
+        logger.info("Ensured manual S1-S6 CCA-NMPC dataset scenarios exist.")
 
         await session.commit()

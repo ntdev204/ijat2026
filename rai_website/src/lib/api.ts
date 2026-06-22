@@ -54,7 +54,12 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
     headers,
   };
 
-  const response = await fetch(resolveApiEndpoint(endpoint), config);
+  let response: Response;
+  try {
+    response = await fetch(resolveApiEndpoint(endpoint), config);
+  } catch {
+    throw new ApiError("Cannot reach the robot API.", 0);
+  }
 
   if (!response.ok) {
     let message = "An error occurred";

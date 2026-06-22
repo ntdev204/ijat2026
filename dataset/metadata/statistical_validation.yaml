@@ -1,0 +1,10 @@
+minimum_runs_per_condition: 30
+recommended_runs_per_core_scenario: 50
+recommended_runs_for_s6: 60
+reporting: mean +- std and 95% confidence interval
+significance_tests:
+  - paired t-test when normal
+  - Wilcoxon signed-rank when non-normal
+effect_size:
+  - Cohen d
+  - Cliff delta

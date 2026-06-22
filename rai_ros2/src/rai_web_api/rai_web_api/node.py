@@ -11,8 +11,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan, Image
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
-from std_msgs.msg import Bool, Float32, String
+from std_msgs.msg import Bool, Empty, Float32, String
 from rai_controller.msg import AdaptiveBounds, Context, HumanStates, SolverStats
+from rai_human_perception.msg import ContextInput
 
 class WebBridgeNode(Node):
     """
@@ -24,6 +25,11 @@ class WebBridgeNode(Node):
         super().__init__('web_bridge_node')
         self.lock = threading.Lock()
         self.cmd_vel_topic = self.declare_parameter("cmd_vel_topic", "/cmd_vel_web").value
+        self.map_topic = self.declare_parameter("map_topic", "/map").value
+        self.global_path_topic = self.declare_parameter("global_path_topic", "/rai_navigation/global_path").value
+        self.local_path_topic = self.declare_parameter("local_path_topic", "/canmpc/predicted_trajectory").value
+        self.odom_topics = ["/odom_combined", "/odom"]
+        self.context_input_topics = ["/human_perception/context_input", "/cca_nmpc/context_input"]
 
         # Telemetry State (Thread-safe)
         self.telemetry = {
@@ -42,11 +48,13 @@ class WebBridgeNode(Node):
                 "phi_h": 0.0,
                 "d_h": None,
                 "d_safe": 0.5,
-                "vx_max": 0.8,
-                "vy_max": 0.5,
+                "vx_max": 0.45,
+                "vy_max": 0.35,
                 "omega_max": 1.0,
                 "occlusion_flag": False,
                 "navigation_mode": "idle",
+                "human_count": 0,
+                "tracking_quality": 0.0,
             },
             "humans": [],
             "solver": {},
@@ -64,11 +72,12 @@ class WebBridgeNode(Node):
 
         # Subscriptions placeholders
         self.scan_sub = None
-        self.odom_sub = None
+        self.odom_subs = []
         self.context_sub = None
         self.humans_sub = None
         self.bounds_sub = None
         self.solver_sub = None
+        self.context_input_subs = []
         self.camera_sub = None
         self.map_sub = None
         self.plan_sub = None
@@ -100,6 +109,7 @@ class WebBridgeNode(Node):
         # Permanent Publishers/Clients
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.cca_goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
+        self.rai_cancel_pub = self.create_publisher(Empty, '/rai_navigation/cancel_topic', 10)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
         self.voltage_sub = self.create_subscription(
             Float32, '/PowerVoltage', self.voltage_callback, self.reliable_qos
@@ -145,10 +155,13 @@ class WebBridgeNode(Node):
             self.scan_sub = self.create_subscription(
                 LaserScan, '/scan_filtered', self.scan_callback, self.sensor_qos
             )
-        if self.odom_sub is None:
-            self.odom_sub = self.create_subscription(
-                Odometry, '/odom_combined', self.odom_callback, self.reliable_qos
-            )
+        if not self.odom_subs:
+            for topic_name in self.odom_topics:
+                self.odom_subs.append(
+                    self.create_subscription(
+                        Odometry, topic_name, self.odom_callback, self.reliable_qos
+                    )
+                )
         if self.context_sub is None:
             self.context_sub = self.create_subscription(
                 Context, '/canmpc/context', self.context_callback, self.reliable_qos
@@ -165,6 +178,13 @@ class WebBridgeNode(Node):
             self.solver_sub = self.create_subscription(
                 SolverStats, '/canmpc/solver_stats', self.solver_callback, self.reliable_qos
             )
+        if not self.context_input_subs:
+            for topic_name in self.context_input_topics:
+                self.context_input_subs.append(
+                    self.create_subscription(
+                        ContextInput, topic_name, self.context_input_callback, self.reliable_qos
+                    )
+                )
 
     def unregister_telemetry_client(self):
         """Hủy subscriptions telemetry khi không còn client nào để tiết kiệm CPU"""
@@ -175,9 +195,9 @@ class WebBridgeNode(Node):
                 if self.scan_sub:
                     self.destroy_subscription(self.scan_sub)
                     self.scan_sub = None
-                if self.odom_sub:
-                    self.destroy_subscription(self.odom_sub)
-                    self.odom_sub = None
+                for sub in self.odom_subs:
+                    self.destroy_subscription(sub)
+                self.odom_subs = []
                 if self.context_sub:
                     self.destroy_subscription(self.context_sub)
                     self.context_sub = None
@@ -190,6 +210,9 @@ class WebBridgeNode(Node):
                 if self.solver_sub:
                     self.destroy_subscription(self.solver_sub)
                     self.solver_sub = None
+                for sub in self.context_input_subs:
+                    self.destroy_subscription(sub)
+                self.context_input_subs = []
 
     def register_camera_client(self):
         """Kích hoạt subscription camera (topic nặng nhất) khi có client WebRTC xem stream"""
@@ -216,11 +239,8 @@ class WebBridgeNode(Node):
         """Kích hoạt subscription map khi có client kết nối websocket"""
         with self.lock:
             self.active_map_clients += 1
-            if self.active_map_clients == 1:
-                self.get_logger().info("🗺️ Map client connected. Subscribing to /map...")
-                self.map_sub = self.create_subscription(
-                    OccupancyGrid, '/map', self.map_callback, self.map_qos
-                )
+            if self.active_map_clients == 1 and self.map_sub is None:
+                self._activate_map_subscription()
 
     def unregister_map_client(self):
         """Hủy subscription map khi không còn client nào"""
@@ -236,23 +256,31 @@ class WebBridgeNode(Node):
         """Đảm bảo topic /map đã được subscribe (dùng khi lưu map qua HTTP endpoint)"""
         with self.lock:
             if self.map_sub is None:
-                self.get_logger().info("🗺️ Ensuring subscription to /map for saving...")
-                self.map_sub = self.create_subscription(
-                    OccupancyGrid, '/map', self.map_callback, self.map_qos
-                )
+                self._activate_map_subscription()
+
+    def _activate_map_subscription(self):
+        self.get_logger().info(f"🗺️ Subscribing to map topic {self.map_topic}...")
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, self.map_topic, self.map_callback, self.map_qos
+        )
 
     def register_paths_client(self):
         """Kích hoạt subscription global/local paths khi client kết nối websocket"""
         with self.lock:
             self.active_paths_clients += 1
             if self.active_paths_clients == 1:
-                self.get_logger().info("🗺️ Path client connected. Subscribing to /plan and /local_plan...")
-                self.plan_sub = self.create_subscription(
-                    Path, '/plan', self.global_plan_callback, self.reliable_qos
-                )
-                self.local_plan_sub = self.create_subscription(
-                    Path, '/local_plan', self.local_plan_callback, self.reliable_qos
-                )
+                self._activate_path_subscriptions()
+
+    def _activate_path_subscriptions(self):
+        self.get_logger().info(
+            f"🗺️ Subscribing to path topics global={self.global_path_topic}, local={self.local_path_topic}..."
+        )
+        self.plan_sub = self.create_subscription(
+            Path, self.global_path_topic, self.global_plan_callback, self.reliable_qos
+        )
+        self.local_plan_sub = self.create_subscription(
+            Path, self.local_path_topic, self.local_plan_callback, self.reliable_qos
+        )
 
     def unregister_paths_client(self):
         """Hủy subscription paths khi không còn client nào"""
@@ -266,6 +294,53 @@ class WebBridgeNode(Node):
                 if self.local_plan_sub:
                     self.destroy_subscription(self.local_plan_sub)
                     self.local_plan_sub = None
+
+    def get_visual_topics(self):
+        with self.lock:
+            return {
+                "map_topic": self.map_topic,
+                "global_path_topic": self.global_path_topic,
+                "local_path_topic": self.local_path_topic,
+            }
+
+    def configure_visual_topics(self, map_topic: str, global_path_topic: str, local_path_topic: str):
+        with self.lock:
+            next_map_topic = map_topic.strip()
+            next_global_topic = global_path_topic.strip()
+            next_local_topic = local_path_topic.strip()
+            if not next_map_topic or not next_global_topic or not next_local_topic:
+                raise ValueError("Visual topics cannot be empty")
+
+            map_changed = next_map_topic != self.map_topic
+            paths_changed = next_global_topic != self.global_path_topic or next_local_topic != self.local_path_topic
+            self.map_topic = next_map_topic
+            self.global_path_topic = next_global_topic
+            self.local_path_topic = next_local_topic
+
+            if map_changed and self.map_sub:
+                self.destroy_subscription(self.map_sub)
+                self.map_sub = None
+                self.latest_map = None
+                if self.active_map_clients > 0:
+                    self._activate_map_subscription()
+
+            if paths_changed:
+                if self.plan_sub:
+                    self.destroy_subscription(self.plan_sub)
+                    self.plan_sub = None
+                if self.local_plan_sub:
+                    self.destroy_subscription(self.local_plan_sub)
+                    self.local_plan_sub = None
+                self.latest_global_plan = []
+                self.latest_local_plan = []
+                if self.active_paths_clients > 0:
+                    self._activate_path_subscriptions()
+
+            return {
+                "map_topic": self.map_topic,
+                "global_path_topic": self.global_path_topic,
+                "local_path_topic": self.local_path_topic,
+            }
 
     # --- CALLBACKS ---
 
@@ -421,6 +496,11 @@ class WebBridgeNode(Node):
                 "timeout_flag": bool(msg.timeout_flag),
                 "collision_flag": bool(msg.collision_flag),
             }
+
+    def context_input_callback(self, msg: ContextInput):
+        with self.lock:
+            self.telemetry["context"]["human_count"] = int(msg.human_count)
+            self.telemetry["context"]["tracking_quality"] = round(float(msg.tracking_quality), 3)
 
     def camera_callback(self, msg: Image):
         """Lưu frame ảnh thô mới nhất làm bộ đệm cho WebRTC"""
@@ -600,9 +680,10 @@ class WebBridgeNode(Node):
         return self.send_cca_nmpc_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
 
     def cancel_nav_goal(self):
-        """Cancel pending RAI navigation route chaining."""
+        """Cancel pending RAI navigation route chaining and the active controller goal."""
         self.pending_nav_goal = None
         self.current_nav_goal_handle = None
+        self.rai_cancel_pub.publish(Empty())
 
     def _yaw_to_quaternion(self, yaw: float):
         cy = math.cos(yaw * 0.5)

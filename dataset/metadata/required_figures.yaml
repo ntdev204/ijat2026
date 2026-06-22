@@ -1,0 +1,12 @@
+figures:
+  - trajectory_comparison
+  - phi_h_timeseries
+  - d_safe_timeseries
+  - v_max_timeseries
+  - human_distance_vs_phi_h
+  - prediction_error
+  - solver_distribution
+  - safety_comparison
+  - rmse_comparison
+  - adaptive_constraint_behaviour
+  - ablation_results

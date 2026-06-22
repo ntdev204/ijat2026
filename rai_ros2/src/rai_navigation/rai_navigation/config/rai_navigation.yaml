@@ -61,8 +61,8 @@ rai_controller:
     max_laser_age_sec: 0.5
     use_imu_angular_velocity: true
     max_imu_age_sec: 0.5
-    control_frequency: 20.0
-    max_solver_time_ms: 50.0
+    control_frequency: 25.0
+    max_solver_time_ms: 35.0
     stop_on_stale_odom_sec: 0.5
     stop_on_missing_plan: true
     goal_tolerance_xy: 0.25
@@ -75,7 +75,7 @@ rai_controller:
     recovery_spin_duration_sec: 1.2
 
     horizon_steps: 20
-    sample_time: 0.05
+    sample_time: 0.04
     max_reference_length: 3.0
     default_v_ref: 0.35
     vx_samples: 7
@@ -93,14 +93,24 @@ rai_controller:
 
     beta: 3.0
     d0: 2.5
+    context_distance_weight: 6.0
+    context_velocity_weight: 1.0
+    context_direction_weight: 1.0
+    context_confidence_weight: 0.5
+    context_bias: 0.0
+    human_velocity_max: 1.5
     d_safe_0: 0.5
     d_safe_max: 0.8
+    k_d: 0.3
     vx_max_0: 0.45
     vy_max_0: 0.35
     omega_max_0: 1.0
     vx_max_min: 0.08
     vy_max_min: 0.06
     omega_max_min: 0.15
+    k_vx: 0.37
+    k_vy: 0.29
+    k_omega: 0.85
 
     q_x: 10.0
     q_y: 10.0
@@ -118,6 +128,6 @@ rai_controller:
     costmap_cost_weight: 0.02
     terminal_cost_weight: 12.0
     w_slack: 100000.0
-    max_compute_time_ms: 50.0
+    max_compute_time_ms: 35.0
     max_human_age_sec: 0.5
     costmap_collision_threshold: 98.0

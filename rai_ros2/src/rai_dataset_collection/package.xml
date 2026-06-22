@@ -4,7 +4,7 @@
   <name>rai_dataset_collection</name>
   <version>1.0.0</version>
   <description>
-    Dataset collection for Continuous Context-Adaptive CA-NMPC training and validation.
+    Dataset collection for Continuous Context-Aware NMPC benchmark, validation, and evaluation.
     Records LiDAR, RGB-D camera, odometry, Mecanum commands, continuous context,
     human state estimates, adaptive bounds, solver stats, and local costmap data.
   </description>
@@ -17,6 +17,7 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>rai_controller</depend>
+  <depend>rai_human_perception</depend>
   <depend>tf2_msgs</depend>
   <depend>rosbag2_py</depend>
   <depend>tf2_ros</depend>

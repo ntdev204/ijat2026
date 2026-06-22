@@ -10,8 +10,9 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    robot_navigation_dir = get_package_share_directory("rai_robot_navigation")
     navigation_dir = get_package_share_directory("rai_navigation")
-    default_params = os.path.join(navigation_dir, "config", "rai_navigation.yaml")
+    default_params = os.path.join(robot_navigation_dir, "param", "rai_robot_navigation.yaml")
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     map_yaml = LaunchConfiguration("map")

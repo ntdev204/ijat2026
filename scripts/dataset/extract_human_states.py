@@ -12,8 +12,8 @@ def main() -> int:
     ensure_layout(dataset)
     print_json({
         "outputs": [
-            str(dataset / "derived" / "human_states.csv"),
-            str(dataset / "derived" / "human_prediction.csv"),
+            str(dataset / "derived" / "aggregates" / "human_states.csv"),
+            str(dataset / "derived" / "aggregates" / "human_prediction.csv"),
         ],
         "bag": args.bag,
         "message": "Schemas exist; implement detector/GT alignment when ground truth topics are finalized.",

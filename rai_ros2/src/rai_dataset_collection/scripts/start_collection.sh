@@ -39,8 +39,8 @@ while [[ $# -gt 0 ]]; do
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  --scenario NAME       S1_open_zone | S2_narrow_corridor | S3_human_proximate | S4_dynamic_crossing | S5_occlusion_sudden_appearance"
-            echo "  --controller NAME     CCA_NMPC | DISCRETE_CA_NMPC | A_STAR_NMPC | A_STAR_TEB | A_STAR_DWA"
+            echo "  --scenario NAME       S1_open_zone | S2_narrow_corridor | S3_human_proximate | S4_dynamic_crossing | S5_occlusion | S6_human_approaching"
+            echo "  --controller NAME     CCA_NMPC | NMPC | MPPI | DWA | DWB | TEB"
             echo "  --environment NAME    real | sim"
             echo "  --split NAME          train | val | test | unsplit"
             echo "  --run-id NAME         Optional deterministic id, e.g. run_000"

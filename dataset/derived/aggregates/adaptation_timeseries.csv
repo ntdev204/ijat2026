@@ -1,0 +1,1 @@
+timestamp,run_id,scenario_id,controller_id,d_h,phi_h,d_safe,vx_max_adaptive,vy_max_adaptive,omega_max_adaptive,q_x_adaptive,q_y_adaptive,q_theta_adaptive,vx_cmd,vy_cmd,omega_cmd,occlusion_flag

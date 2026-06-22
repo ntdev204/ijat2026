@@ -4,7 +4,7 @@ Manual Mecanum command helper for dataset collection.
 
 Map-based scenario execution is intentionally disabled until a real map and
 reference trajectory generator are available. This node only publishes a safe
-zero command and status, so dataset collection remains manual/Nav2-driven.
+zero command and status, so dataset collection remains manual or web-driven.
 """
 
 import rclpy
@@ -31,7 +31,7 @@ class TrajectoryExecutor(Node):
                 'Publishing stop command only.'
             )
         else:
-            self.get_logger().info('trajectory_executor idle: dataset collection is manual/Nav2-driven.')
+            self.get_logger().info('trajectory_executor idle: dataset collection is manual or web-driven.')
 
         self.create_timer(1.0, self.publish_idle_status)
 

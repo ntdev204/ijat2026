@@ -2,14 +2,15 @@
 
 ## Purpose
 
-Collect datasets for **Continuous Context-Adaptive CA-NMPC** on a Rai Mecanum robot.
+Collect datasets for **Continuous Context-Aware NMPC (CCA-NMPC)** on a Rai Mecanum robot.
 
 The active flow records continuous context and Mecanum commands:
 
 - `phi_h`, `d_h`, `d_safe`.
 - `vx_max`, `vy_max`, `omega_max`.
-- Human state `[x, y, vx, vy]`.
+- Human state `[x, y, vx, vy]`, detector confidence, covariance.
 - Robot command `[linear.x, linear.y, angular.z]`.
+- Perception context input from `YOLO26m + best.pt`.
 
 ## Build
 
@@ -35,7 +36,10 @@ ros2 launch rai_dataset_collection dataset_collection.launch.py \
 ```bash
 ros2 topic echo /canmpc/context
 ros2 topic echo /canmpc/humans
+ros2 topic echo /cca_nmpc/context_input
+ros2 topic echo /cca_nmpc/humans
 ros2 topic echo /canmpc/adaptive_bounds
+ros2 topic echo /perception/debug/tracks
 ros2 topic echo /cmd_vel
 ```
 
@@ -44,8 +48,7 @@ ros2 topic echo /cmd_vel
 ```bash
 python3 src/rai_dataset_collection/scripts/verify_dataset.py \
   --path ~/rai_datasets/canmpc \
-  --environment real \
-  --min-runs 20
+  --environment real
 ```
 
 ## Web API

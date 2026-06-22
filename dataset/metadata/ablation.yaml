@@ -1,0 +1,4 @@
+ablation_controllers:
+  - id: NMPC
+    label: NMPC
+    description: Nominal Mecanum NMPC without human context adaptation
