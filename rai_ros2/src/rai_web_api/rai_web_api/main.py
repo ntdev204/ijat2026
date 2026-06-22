@@ -50,15 +50,27 @@ DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
+DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", "100.77.136.102").strip()
 try:
     Path(get_package_share_directory("rai_web_api")).resolve()
 except Exception:
     pass
 
+
+def _cors_origins() -> list[str]:
+    configured = os.getenv("RAI_API_CORS", "").strip()
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    default_origins = [
+        f"http://{DEFAULT_LAN_HOST}:3000",
+        "http://localhost:3000",
+    ]
+    return default_origins
+
 app = FastAPI(title="Rai Robot Web API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("RAI_API_CORS", "*").split(","),
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

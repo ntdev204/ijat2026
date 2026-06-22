@@ -23,6 +23,7 @@ safe_source /home/rai/ijat2026/rai_ros2/install/setup.bash
 export RAI_DEVICE_ROLE=pi
 export RAI_DEVICE_LABEL=raspberry_pi_4
 export RAI_DATASET_PATH=/home/rai/ijat2026/dataset
+export RAI_API_CORS=${RAI_API_CORS:-http://100.77.136.102:3000,http://localhost:3000}
 
 # 4. Optional: Wait for network to be fully up (if interface bonding is needed)
 sleep 2

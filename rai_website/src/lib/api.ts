@@ -1,4 +1,5 @@
 const DEFAULT_ROBOT_API_PORT = "8080";
+const DEFAULT_LAN_HOST = "100.77.136.102";
 
 function configuredApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_URL?.trim();
@@ -19,7 +20,7 @@ export function getApiBaseUrl() {
     return window.location.origin;
   }
 
-  return `http://localhost:${DEFAULT_ROBOT_API_PORT}`;
+  return `http://${DEFAULT_LAN_HOST}:${DEFAULT_ROBOT_API_PORT}`;
 }
 
 export function getWebSocketBaseUrl() {

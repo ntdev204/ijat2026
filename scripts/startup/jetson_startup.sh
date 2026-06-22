@@ -22,7 +22,8 @@ safe_source /home/rai/ijat2026/rai_ros2/install/setup.bash
 # 3. Device Specific Roles
 export RAI_DEVICE_ROLE=jetson
 export RAI_DEVICE_LABEL=jetson_orin_nano
-export RAI_PI_API_URL=${RAI_PI_API_URL:-http://25.12.4.101:8080}
+export RAI_PI_API_URL=${RAI_PI_API_URL:-http://100.77.136.102:8080}
+export RAI_API_CORS=${RAI_API_CORS:-http://100.77.136.102:3000,http://localhost:3000}
 
 # 4. Optional: Wait for network to be fully up
 sleep 2
