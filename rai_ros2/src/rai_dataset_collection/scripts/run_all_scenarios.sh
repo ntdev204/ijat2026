@@ -1,7 +1,7 @@
 #!/bin/bash
-# Guided manual S1-S6 collection helper.
-# It does not execute map-based trajectories. It launches the recorder for each
-# required scenario label and waits for the operator to perform the scenario.
+
+
+
 
 set -e
 
@@ -27,7 +27,7 @@ declare -A SCENARIO_RUN_TARGETS=(
     ["S6_human_approaching"]=60
 )
 
-while [[ $# -gt 0 ]]; do
+while [[ $
     case $1 in
         --runs)
             RUNS_PER_SCENARIO="$2"

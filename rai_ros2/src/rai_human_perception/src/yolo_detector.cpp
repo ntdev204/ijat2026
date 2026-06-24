@@ -22,7 +22,7 @@ std::string quote(const std::string & value)
   return "'" + value + "'";
 }
 
-}  // namespace
+}  
 
 YoloDetector::YoloDetector(YoloDetectorOptions options)
 : options_(std::move(options))
@@ -77,9 +77,9 @@ bool YoloDetector::loadTensorRtEngine()
   if (!engine_file.good()) {
     return false;
   }
-  // The production package verifies that a TensorRT engine is available here.
-  // Inference falls back to OpenCV DNN unless a project-specific CUDA binding
-  // is linked in, keeping the package buildable on non-Jetson CI machines.
+  
+  
+  
   return false;
 #else
   return false;
@@ -189,4 +189,4 @@ std::vector<Detection2D> YoloDetector::parseOpenCvDetections(
   return detections;
 }
 
-}  // namespace rai_human_perception
+}  

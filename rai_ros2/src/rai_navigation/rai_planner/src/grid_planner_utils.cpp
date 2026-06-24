@@ -144,7 +144,7 @@ std::vector<std::pair<int, int>> smoothGridPath(
   return cells;
 }
 
-}  // namespace
+}  
 
 bool worldToMap(
   const nav_msgs::msg::OccupancyGrid & map,
@@ -321,4 +321,4 @@ nav_msgs::msg::Path makeStraightPath(
   return path;
 }
 
-}  // namespace rai_planner
+}  

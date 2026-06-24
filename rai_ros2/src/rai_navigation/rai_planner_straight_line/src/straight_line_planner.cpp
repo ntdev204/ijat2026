@@ -31,11 +31,11 @@ std::unique_ptr<rai_planner::Planner> create()
   return std::make_unique<StraightLinePlanner>();
 }
 
-}  // namespace
+}  
 
 void registerStraightLinePlanner()
 {
   rai_planner::registerPlanner("STRAIGHT_LINE", create);
 }
 
-}  // namespace rai_planner_straight_line
+}  

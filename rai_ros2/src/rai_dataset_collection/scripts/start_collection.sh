@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start one CCA-NMPC dataset collection run.
+
 
 set -e
 
@@ -10,7 +10,7 @@ SPLIT="unsplit"
 RUN_ID=""
 AUTO_START="true"
 
-while [[ $# -gt 0 ]]; do
+while [[ $
     case $1 in
         --scenario)
             SCENARIO="$2"

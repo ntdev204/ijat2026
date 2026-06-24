@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
-#def launch(launch_descriptor, argv):
+
 def generate_launch_description():
     bringup_dir = get_package_share_directory('turn_on_rai_robot')
     launch_dir = os.path.join(bringup_dir, 'launch')

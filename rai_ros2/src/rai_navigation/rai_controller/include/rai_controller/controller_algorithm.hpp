@@ -43,6 +43,6 @@ std::unique_ptr<ControllerAlgorithm> createController(
   const ControllerConfig & config);
 void registerController(const std::string & id, ControllerFactory factory);
 
-}  // namespace rai_controller
+}  
 
-#endif  // RAI_CONTROLLER__CONTROLLER_ALGORITHM_HPP_
+#endif  

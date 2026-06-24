@@ -43,7 +43,7 @@ export function useMonitorRuntime(): MonitorRuntime {
       const fallbackMap = (await mapResponse.json()) as MapPayload;
       setMapData((current) => preserveCurrentMap(current, fallbackMap));
     } catch {
-      // keep empty
+      
     }
   }, []);
 

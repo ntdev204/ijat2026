@@ -53,6 +53,6 @@ private:
   int next_track_id_{1};
 };
 
-}  // namespace rai_human_perception
+}  
 
-#endif  // RAI_HUMAN_PERCEPTION__KALMAN_TRACKER_HPP_
+#endif  

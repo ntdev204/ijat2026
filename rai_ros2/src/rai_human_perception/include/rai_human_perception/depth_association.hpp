@@ -31,6 +31,6 @@ private:
   double max_depth_m_{6.0};
 };
 
-}  // namespace rai_human_perception
+}  
 
-#endif  // RAI_HUMAN_PERCEPTION__DEPTH_ASSOCIATION_HPP_
+#endif  

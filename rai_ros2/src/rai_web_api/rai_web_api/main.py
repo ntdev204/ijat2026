@@ -51,6 +51,7 @@ DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
 DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", "100.77.136.102").strip()
+IS_HUB_ROLE = DEVICE_ROLE in {"hub", "laptop"}
 try:
     Path(get_package_share_directory("rai_web_api")).resolve()
 except Exception:
@@ -225,6 +226,8 @@ RUNTIME_SETTING_CAMERA_DEPTH = "system.camera.enable_depth"
 ROLE_ALLOWED_ACTIONS = {
     "pi": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar"},
     "jetson": {"controller", "system", "camera"},
+    "hub": {"system", "simulation"},
+    "laptop": {"system", "simulation"},
     "sim": {"teleop", "navigation", "slam", "maps", "simulation", "system"},
     "unknown": {"maps", "simulation", "system"},
 }
@@ -1155,7 +1158,12 @@ async def set_system_operation_mode(request: SystemOperationModeRequest, http_re
     is_internal_proxy = http_request.headers.get("X-RAI-Internal-Proxy", "").strip() == "1"
     if not is_internal_proxy:
         peer_targets: list[str] = []
-        if DEVICE_ROLE == "pi" and _can_proxy_to_peer("jetson"):
+        if IS_HUB_ROLE:
+            if _can_proxy_to_peer("pi"):
+                peer_targets.append("pi")
+            if _can_proxy_to_peer("jetson"):
+                peer_targets.append("jetson")
+        elif DEVICE_ROLE == "pi" and _can_proxy_to_peer("jetson"):
             peer_targets.append("jetson")
         elif DEVICE_ROLE == "jetson" and _can_proxy_to_peer("pi"):
             peer_targets.append("pi")
@@ -1178,6 +1186,116 @@ async def system_components(request: Request) -> dict:
     components = _local_system_components()
     proxied: list[dict] = []
     is_internal_proxy = request.headers.get("X-RAI-Internal-Proxy", "").strip() == "1"
+
+    if IS_HUB_ROLE and not is_internal_proxy:
+        hub_components = [item for item in components if item["id"] == "simulation"]
+        peer_components: list[dict] = []
+
+        if _can_proxy_to_peer("pi"):
+            try:
+                peer_payload = _peer_request("GET", "pi", "/api/system/components")
+                peer_components.extend(
+                    item
+                    for item in peer_payload.get("components", [])
+                    if item.get("host_device") == "pi"
+                )
+            except HTTPException as exc:
+                peer_components.extend([
+                    {
+                        "id": "robot_base",
+                        "label": "Robot Base",
+                        "host_device": "pi",
+                        "action": "hardware",
+                        "allowed_here": False,
+                        "running": False,
+                        "pid": None,
+                        "launch_file": "turn_on_rai_robot.launch.py",
+                        "description": f"Pi unavailable: {exc.detail}",
+                        "capabilities": {},
+                        "proxy_error": str(exc.detail),
+                    },
+                    {
+                        "id": "lidar",
+                        "label": "LiDAR",
+                        "host_device": "pi",
+                        "action": "lidar",
+                        "allowed_here": False,
+                        "running": False,
+                        "pid": None,
+                        "launch_file": "rai_lidar.launch.py",
+                        "description": f"Pi unavailable: {exc.detail}",
+                        "capabilities": {},
+                        "proxy_error": str(exc.detail),
+                    },
+                    {
+                        "id": "slam",
+                        "label": "SLAM",
+                        "host_device": "pi",
+                        "action": "slam",
+                        "allowed_here": False,
+                        "running": False,
+                        "pid": None,
+                        "launch_file": "online_async_launch.py",
+                        "description": f"Pi unavailable: {exc.detail}",
+                        "capabilities": {},
+                        "proxy_error": str(exc.detail),
+                    },
+                    {
+                        "id": "navigation",
+                        "label": "Navigation",
+                        "host_device": "pi",
+                        "action": "navigation",
+                        "allowed_here": False,
+                        "running": False,
+                        "pid": None,
+                        "launch_file": "rai_navigation.launch.py",
+                        "description": f"Pi unavailable: {exc.detail}",
+                        "capabilities": {},
+                        "proxy_error": str(exc.detail),
+                    },
+                    {
+                        "id": "dataset",
+                        "label": "Dataset",
+                        "host_device": "pi",
+                        "action": "dataset",
+                        "allowed_here": False,
+                        "running": False,
+                        "pid": None,
+                        "launch_file": "dataset_collection.launch.py",
+                        "description": f"Pi unavailable: {exc.detail}",
+                        "capabilities": {},
+                        "proxy_error": str(exc.detail),
+                    },
+                ])
+
+        if _can_proxy_to_peer("jetson"):
+            try:
+                peer_payload = _peer_request("GET", "jetson", "/api/system/components")
+                peer_components.extend(
+                    item
+                    for item in peer_payload.get("components", [])
+                    if item.get("host_device") == "jetson" or item.get("id") == "camera"
+                )
+            except HTTPException as exc:
+                peer_components.append({
+                    "id": "camera",
+                    "label": "Camera",
+                    "host_device": "jetson",
+                    "action": "camera",
+                    "allowed_here": False,
+                    "running": False,
+                    "pid": None,
+                    "launch_file": "rai_camera.launch.py",
+                    "description": f"Jetson unavailable: {exc.detail}",
+                    "capabilities": {"enable_depth_toggle": True},
+                    "proxy_error": str(exc.detail),
+                })
+
+        merged_by_id = {item["id"]: item for item in [*peer_components, *hub_components]}
+        return {
+            **_system_runtime_payload(),
+            "components": list(merged_by_id.values()),
+        }
 
     if DEVICE_ROLE == "pi" and _can_proxy_to_peer("jetson") and not is_internal_proxy:
         try:
@@ -1893,10 +2011,10 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
 
-    # Đảm bảo đã subscribe topic /map
+    
     bridge_node.ensure_map_subscription()
 
-    # Chờ bản đồ được cập nhật từ topic (nếu mới subscribe)
+    
     max_wait = 15
     current_map = None
     for _ in range(max_wait):
@@ -1912,7 +2030,7 @@ async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) 
             detail="No map data available from /map topic. Make sure SLAM or map_server is active."
         )
 
-    # Lưu bản đồ vào cơ sở dữ liệu
+    
     try:
         yaml_path, pgm_path = _write_saved_map_files(request.name, current_map)
     except Exception as exc:

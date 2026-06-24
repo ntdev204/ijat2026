@@ -31,7 +31,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(bringup_dir,'launch', 'rai_camera.launch.py')),
     )
     parameters={
-          'frame_id':'camera_link', #rai:camera_link
+          'frame_id':'camera_link', 
           'use_sim_time':use_sim_time,
           'subscribe_rgbd':True,
           'subscribe_scan':True,
@@ -39,12 +39,12 @@ def generate_launch_description():
           'qos_scan':qos,
           'qos_image':qos,
           'qos_imu':qos,
-          # RTAB-Map's parameters should be strings:
+          
           'Reg/Strategy':'1',
           'Reg/Force3DoF':'true',
           'RGBD/NeighborLinkRefining':'True',
-          'Grid/RangeMin':'0.2', # ignore laser scan points on the robot itself
-          'Optimizer/GravitySigma':'0' # Disable imu constraints (we are already in 2D)
+          'Grid/RangeMin':'0.2', 
+          'Optimizer/GravitySigma':'0' 
     }
     
     remappings=[
@@ -56,21 +56,21 @@ def generate_launch_description():
 
     return LaunchDescription([
         rai_robot,rai_lidar,rai_camera,
-        # Set env var to print messages to stdout immediately
-        #SetEnvironmentVariable('RCUTILS_CONSOLE_STDOUT_LINE_BUFFERED', '1'),
+        
+        
 
-        # Launch arguments
+        
         DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation (Gazebo) clock if true'),
 
         DeclareLaunchArgument('qos',default_value='2',description='General QoS used for sensor input data: 0=system default, 1=Reliable, 2=Best Effort.'),
         DeclareLaunchArgument('Localization', default_value='false', description='Launch in localization mode.'),        
-        # Nodes to launch
+        
         Node(
             package='rtabmap_sync', executable='rgbd_sync', output='screen',
             parameters=[{'approx_sync':True, 'approx_sync_max_interval':0.01, 'use_sim_time':use_sim_time, 'qos':qos}],
             remappings=remappings),
 
-        # Localization mode:
+        
         Node(
             condition=IfCondition(Localization),
             package='rtabmap_slam', executable='rtabmap', output='screen',
@@ -78,7 +78,7 @@ def generate_launch_description():
               {'Mem/IncrementalMemory':'False',
                'Mem/InitWMWithAllNodes':'True'}],
             remappings=remappings),      
-        # SLAM mode:
+        
         Node(
             condition=UnlessCondition(Localization),
             package='rtabmap_slam', executable='rtabmap', output='screen',

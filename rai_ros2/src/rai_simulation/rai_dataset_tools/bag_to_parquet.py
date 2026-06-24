@@ -27,7 +27,7 @@ def extract_run_to_parquet(run_dir):
     
     extracted_any = False
     
-    # 1. Extract Odometry (/odom)
+    
     odom_topic = "/odom"
     if odom_topic in topics:
         print(f"Extracting {odom_topic}...")
@@ -39,7 +39,7 @@ def extract_run_to_parquet(run_dir):
             print(f"Saved {len(df)} rows to {output_file}")
             extracted_any = True
             
-    # 2. Extract Velocity Commands (/cmd_vel)
+    
     cmd_topic = None
     if "/cmd_vel" in topics:
         cmd_topic = "/cmd_vel"
@@ -56,7 +56,7 @@ def extract_run_to_parquet(run_dir):
             print(f"Saved {len(df)} rows to {output_file}")
             extracted_any = True
             
-    # 3. Extract Context (/canmpc/context)
+    
     context_topic = "/canmpc/context"
     if context_topic in topics:
         print(f"Extracting {context_topic}...")
@@ -72,7 +72,7 @@ def extract_run_to_parquet(run_dir):
             print(f"Saved {len(df)} rows to {output_file}")
             extracted_any = True
             
-    # 4. Extract Humans (/canmpc/humans)
+    
     humans_topic = "/canmpc/humans"
     if humans_topic in topics:
         print(f"Extracting {humans_topic}...")
@@ -126,7 +126,7 @@ def extract_run_to_parquet(run_dir):
             print(f"Saved {len(df)} rows to {output_file}")
             extracted_any = True
 
-    # 5. Extract Solver Stats (/canmpc/solver_stats)
+    
     solver_topic = "/canmpc/solver_stats"
     if solver_topic in topics:
         print(f"Extracting {solver_topic}...")
@@ -138,7 +138,7 @@ def extract_run_to_parquet(run_dir):
             print(f"Saved {len(df)} rows to {output_file}")
             extracted_any = True
             
-    # 6. Extract Adaptive Bounds (/canmpc/adaptive_bounds)
+    
     bounds_topic = "/canmpc/adaptive_bounds"
     if bounds_topic in topics:
         print(f"Extracting {bounds_topic}...")
@@ -163,7 +163,7 @@ def extract_run_to_parquet(run_dir):
                 print(f"Saved {len(df)} rows to {output_file}")
                 extracted_any = True
 
-    # 7. Extract Local Reference Path (/canmpc/local_reference_path)
+    
     path_topic = "/canmpc/local_reference_path"
     if path_topic in topics:
         print(f"Extracting {path_topic}...")
@@ -188,7 +188,7 @@ def extract_run_to_parquet(run_dir):
                 print(f"Saved {len(df)} rows to {output_file}")
                 extracted_any = True
 
-    # 8. Extract Laser Scan (/scan)
+    
     scan_topic = "/scan"
     if scan_topic in topics:
         import math

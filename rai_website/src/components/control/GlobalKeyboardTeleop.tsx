@@ -1,292 +1,286 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
-import { CircleHelp, Keyboard, RotateCw, Signal, Square } from "lucide-react";
+import { Gamepad2, Grip, RotateCcw, RotateCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const LINEAR_STEP = 0.1;
-const ANGULAR_STEP = 0.1;
-const MIN_LINEAR_SPEED = 0.1;
+const MAX_RADIUS = 54;
 const MAX_LINEAR_SPEED = 1.0;
-const MIN_ANGULAR_SPEED = 0.1;
-const MAX_ANGULAR_SPEED = 2.0;
-const VALID_KEYS = new Set(["w", "a", "s", "d", "q", "e", "z", "c", "x", " ", "shift", "u", "i", "o", "p"]);
-
-function shouldIgnoreKeyboardEvent(event: KeyboardEvent) {
-  if (event.metaKey || event.altKey) return true;
-  if (event.ctrlKey) return true;
-
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return false;
-
-  const tag = target.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
-}
+const MIN_LINEAR_SPEED = 0.15;
+const ROTATION_SPEED = 1.0;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function calculateVelocity(keys: Set<string>, linearSpeed: number, angularSpeed: number) {
-  let x = 0;
-  let y = 0;
-  let z = 0;
-
-  if (keys.has(" ")) {
-    return { x: 0, y: 0, z: 0 };
-  }
-
-  if (keys.has("w")) x += linearSpeed;
-  if (keys.has("s")) x -= linearSpeed;
-  if (keys.has("a")) y += linearSpeed;
-  if (keys.has("d")) y -= linearSpeed;
-
-  if (keys.has("q")) {
-    x += linearSpeed;
-    y += linearSpeed;
-  }
-  if (keys.has("e")) {
-    x += linearSpeed;
-    y -= linearSpeed;
-  }
-  if (keys.has("z")) {
-    x -= linearSpeed;
-    y += linearSpeed;
-  }
-  if (keys.has("c")) {
-    x -= linearSpeed;
-    y -= linearSpeed;
-  }
-
-  if (keys.has("x")) {
-    z += keys.has("shift") ? angularSpeed : -angularSpeed;
-  }
-
-  const magnitude = Math.sqrt(x * x + y * y);
-  if (magnitude > linearSpeed && magnitude > 0) {
-    x = (x / magnitude) * linearSpeed;
-    y = (y / magnitude) * linearSpeed;
-  }
-
-  return { x, y, z };
-}
-
 export function GlobalKeyboardTeleop() {
+  const isMobile = useIsMobile();
   const { isConnected, sendMessage } = useWebSocket("/ws/control");
-  const [linearSpeed, setLinearSpeed] = useState(0.3);
-  const [angularSpeed, setAngularSpeed] = useState(0.5);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const activeKeysRef = useRef<Set<string>>(new Set());
-  const isConnectedRef = useRef(isConnected);
-  const linearSpeedRef = useRef(linearSpeed);
-  const angularSpeedRef = useRef(angularSpeed);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [speed, setSpeed] = useState(0.45);
+  const [stick, setStick] = useState({ x: 0, y: 0 });
+  const [rotationDirection, setRotationDirection] = useState<"cw" | "ccw" | null>(null);
+  const joystickRef = useRef<HTMLDivElement | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const speedRef = useRef(speed);
+  const rotationDirectionRef = useRef<"cw" | "ccw" | null>(null);
 
   useEffect(() => {
-    isConnectedRef.current = isConnected;
-  }, [isConnected]);
-
-  useEffect(() => {
-    linearSpeedRef.current = linearSpeed;
-  }, [linearSpeed]);
-
-  useEffect(() => {
-    angularSpeedRef.current = angularSpeed;
-  }, [angularSpeed]);
+    speedRef.current = speed;
+  }, [speed]);
 
   const sendCommand = useCallback(
-    (x: number, y: number, z: number) => {
-      if (!isConnectedRef.current) return;
-
+    (linearX: number, linearY: number, angularZ: number) => {
+      if (!isConnected) return;
       sendMessage(
         JSON.stringify({
-          linear_x: Math.round(x * 100) / 100,
-          linear_y: Math.round(y * 100) / 100,
-          angular_z: Math.round(z * 100) / 100,
+          linear_x: Math.round(linearX * 100) / 100,
+          linear_y: Math.round(linearY * 100) / 100,
+          angular_z: Math.round(angularZ * 100) / 100,
         }),
       );
     },
-    [sendMessage],
+    [isConnected, sendMessage],
   );
 
-  const sendCurrentVelocity = useCallback(() => {
-    const velocity = calculateVelocity(activeKeysRef.current, linearSpeedRef.current, angularSpeedRef.current);
-    sendCommand(velocity.x, velocity.y, velocity.z);
+  const stopRobot = useCallback(() => {
+    activePointerIdRef.current = null;
+    rotationDirectionRef.current = null;
+    setRotationDirection(null);
+    setStick({ x: 0, y: 0 });
+    sendCommand(0, 0, 0);
   }, [sendCommand]);
 
-  const adjustLinearSpeed = useCallback((delta: number) => {
-    setLinearSpeed((current) => {
-      const next = clamp(current + delta, MIN_LINEAR_SPEED, MAX_LINEAR_SPEED);
-      linearSpeedRef.current = next;
-      return next;
-    });
-    queueMicrotask(sendCurrentVelocity);
-  }, [sendCurrentVelocity]);
+  const setPanelOpenSafely = useCallback(
+    (nextOpen: boolean | ((current: boolean) => boolean)) => {
+      setPanelOpen((current) => {
+        const resolved = typeof nextOpen === "function" ? nextOpen(current) : nextOpen;
+        if (!resolved) {
+          activePointerIdRef.current = null;
+          rotationDirectionRef.current = null;
+          setRotationDirection(null);
+          setStick({ x: 0, y: 0 });
+          sendCommand(0, 0, 0);
+        }
+        return resolved;
+      });
+    },
+    [sendCommand],
+  );
 
-  const adjustAngularSpeed = useCallback((delta: number) => {
-    setAngularSpeed((current) => {
-      const next = clamp(current + delta, MIN_ANGULAR_SPEED, MAX_ANGULAR_SPEED);
-      angularSpeedRef.current = next;
-      return next;
-    });
-    queueMicrotask(sendCurrentVelocity);
-  }, [sendCurrentVelocity]);
+  const emitJoystickVelocity = useCallback(
+    (nextStick: { x: number; y: number }) => {
+      const speedLimit = speedRef.current;
+      const lateral = (nextStick.x / MAX_RADIUS) * speedLimit;
+      const forward = (-nextStick.y / MAX_RADIUS) * speedLimit;
+      sendCommand(forward, lateral, 0);
+    },
+    [sendCommand],
+  );
+
+  const updateStickFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const container = joystickRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const deltaX = clientX - centerX;
+      const deltaY = clientY - centerY;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const scale = distance > MAX_RADIUS ? MAX_RADIUS / distance : 1;
+      const nextStick = {
+        x: Math.round(deltaX * scale),
+        y: Math.round(deltaY * scale),
+      };
+
+      rotationDirectionRef.current = null;
+      setRotationDirection(null);
+      setStick(nextStick);
+      emitJoystickVelocity(nextStick);
+    },
+    [emitJoystickVelocity],
+  );
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (!VALID_KEYS.has(key) || shouldIgnoreKeyboardEvent(event)) return;
-
-      event.preventDefault();
-
-      if (event.repeat) {
-        if (key === "u") adjustLinearSpeed(LINEAR_STEP);
-        if (key === "i") adjustLinearSpeed(-LINEAR_STEP);
-        if (key === "o") adjustAngularSpeed(ANGULAR_STEP);
-        if (key === "p") adjustAngularSpeed(-ANGULAR_STEP);
-        return;
-      }
-
-      if (key === "u") {
-        adjustLinearSpeed(LINEAR_STEP);
-        return;
-      }
-      if (key === "i") {
-        adjustLinearSpeed(-LINEAR_STEP);
-        return;
-      }
-      if (key === "o") {
-        adjustAngularSpeed(ANGULAR_STEP);
-        return;
-      }
-      if (key === "p") {
-        adjustAngularSpeed(-ANGULAR_STEP);
-        return;
-      }
-
-      if (activeKeysRef.current.has(key)) return;
-      const nextKeys = new Set(activeKeysRef.current);
-      nextKeys.add(key);
-      activeKeysRef.current = nextKeys;
-      sendCurrentVelocity();
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (!activeKeysRef.current.has(key)) return;
-
-      const nextKeys = new Set(activeKeysRef.current);
-      nextKeys.delete(key);
-      activeKeysRef.current = nextKeys;
-      sendCurrentVelocity();
-    };
-
-    const stopRobot = () => {
-      if (activeKeysRef.current.size === 0) return;
-      activeKeysRef.current = new Set();
-      sendCommand(0, 0, 0);
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp, true);
-    window.addEventListener("blur", stopRobot, true);
-    document.addEventListener("visibilitychange", stopRobot, true);
+    const release = () => stopRobot();
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", release, true);
+    document.addEventListener("visibilitychange", release, true);
 
     return () => {
-      stopRobot();
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp, true);
-      window.removeEventListener("blur", stopRobot, true);
-      document.removeEventListener("visibilitychange", stopRobot, true);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", release, true);
+      document.removeEventListener("visibilitychange", release, true);
     };
-  }, [adjustAngularSpeed, adjustLinearSpeed, sendCommand, sendCurrentVelocity]);
+  }, [stopRobot]);
+
+  const handleJoystickPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      activePointerIdRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      updateStickFromPointer(event.clientX, event.clientY);
+    },
+    [updateStickFromPointer],
+  );
+
+  const handleJoystickPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== event.pointerId) return;
+      updateStickFromPointer(event.clientX, event.clientY);
+    },
+    [updateStickFromPointer],
+  );
+
+  const handleJoystickPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== event.pointerId) return;
+      stopRobot();
+    },
+    [stopRobot],
+  );
+
+  const startRotation = useCallback(
+    (direction: "cw" | "ccw") => {
+      activePointerIdRef.current = null;
+      setStick({ x: 0, y: 0 });
+      setRotationDirection(direction);
+      rotationDirectionRef.current = direction;
+      sendCommand(0, 0, direction === "cw" ? -ROTATION_SPEED : ROTATION_SPEED);
+    },
+    [sendCommand],
+  );
+
+  const panelWidth = isMobile ? "w-[min(92vw,22rem)]" : "w-80";
 
   return (
-    <div className="pointer-events-none fixed right-6 bottom-6 z-50 flex max-w-sm flex-col items-end gap-3">
-      {isHelpOpen && (
-        <div className="pointer-events-auto w-80 rounded-2xl border border-slate-200 bg-white/96 p-4 shadow-xl backdrop-blur">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <Keyboard className="size-4 text-slate-700" />
-              Global Teleop
+    <div className="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6">
+      {panelOpen && (
+        <div
+          className={cn(
+            "pointer-events-auto rounded-[28px] border border-slate-200 bg-white/96 p-4 shadow-[0_22px_60px_rgba(15,23,42,0.18)] backdrop-blur",
+            panelWidth,
+          )}
+        >
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <Gamepad2 className="size-4 text-slate-700" />
+                Manual drive
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Kéo cần để chạy, thả ra để dừng.</p>
             </div>
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-xs font-semibold",
-                isConnected ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700",
-              )}
-            >
-              {isConnected ? "CONNECTED" : "OFFLINE"}
-            </span>
-          </div>
-
-          <div className="space-y-2 text-sm text-slate-600">
-            <p><strong>W/S</strong> tiến/lùi, <strong>A/D</strong> ngang trái/phải</p>
-            <p><strong>Q/E/Z/C</strong> chéo, <strong>X</strong> quay CW, <strong>Shift+X</strong> quay CCW</p>
-            <p><strong>Space</strong> dừng khẩn</p>
-            <p><strong>U/I</strong> tăng/giảm tốc độ tuyến tính</p>
-            <p><strong>O/P</strong> tăng/giảm tốc độ xoay</p>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="text-xs text-slate-500">Linear speed</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-slate-900">{linearSpeed.toFixed(2)} m/s</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="text-xs text-slate-500">Angular speed</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-slate-900">{angularSpeed.toFixed(2)} rad/s</div>
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide",
+                  isConnected ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700",
+                )}
+              >
+                {isConnected ? "ONLINE" : "OFFLINE"}
+              </span>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setPanelOpenSafely(false)}>
+                <X className="size-4" />
+                <span className="sr-only">Close control panel</span>
+              </Button>
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2">
-            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => adjustLinearSpeed(-LINEAR_STEP)}>
-              <Signal className="size-4" />
-              I
-            </Button>
-            <Button type="button" size="sm" className="gap-2" onClick={() => adjustLinearSpeed(LINEAR_STEP)}>
-              <Signal className="size-4" />
-              U
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => adjustAngularSpeed(-ANGULAR_STEP)}>
-              <RotateCw className="size-4" />
-              P
-            </Button>
-            <Button type="button" size="sm" className="gap-2" onClick={() => adjustAngularSpeed(ANGULAR_STEP)}>
-              <RotateCw className="size-4" />
-              O
-            </Button>
+          <div className="grid gap-4">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between text-xs font-medium text-slate-500">
+                <span>Joystick</span>
+                <span>{speed.toFixed(2)} m/s</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <div
+                  ref={joystickRef}
+                  className="relative flex h-40 w-40 touch-none items-center justify-center rounded-full border border-slate-300 bg-[radial-gradient(circle_at_center,_rgba(59,130,246,0.16),_rgba(255,255,255,0.98)_68%)]"
+                  onPointerDown={handleJoystickPointerDown}
+                  onPointerMove={handleJoystickPointerMove}
+                  onPointerUp={handleJoystickPointerUp}
+                >
+                  <div className="pointer-events-none absolute inset-[18px] rounded-full border border-dashed border-slate-300" />
+                  <div className="pointer-events-none absolute inset-1/2 h-px w-24 -translate-x-1/2 bg-slate-200" />
+                  <div className="pointer-events-none absolute inset-1/2 h-24 w-px -translate-y-1/2 bg-slate-200" />
+                  <div
+                    className="pointer-events-none flex h-14 w-14 items-center justify-center rounded-full border border-blue-200 bg-blue-600 text-white shadow-lg transition-transform"
+                    style={{ transform: `translate(${stick.x}px, ${stick.y}px)` }}
+                  >
+                    <Grip className="size-5" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between text-xs font-medium text-slate-500">
+                <span>Tốc độ</span>
+                <span>{Math.round((speed / MAX_LINEAR_SPEED) * 100)}%</span>
+              </div>
+              <Slider
+                min={MIN_LINEAR_SPEED}
+                max={MAX_LINEAR_SPEED}
+                step={0.05}
+                value={[speed]}
+                onValueChange={(values) => {
+                  const nextSpeed = clamp(values[0] ?? speed, MIN_LINEAR_SPEED, MAX_LINEAR_SPEED);
+                  setSpeed(nextSpeed);
+                  if (activePointerIdRef.current !== null) {
+                    emitJoystickVelocity(stick);
+                  }
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant={rotationDirection === "ccw" ? "default" : "outline"}
+                className="h-12 gap-2"
+                onPointerDown={() => startRotation("ccw")}
+                onPointerUp={stopRobot}
+                onPointerLeave={() => {
+                  if (rotationDirectionRef.current === "ccw") stopRobot();
+                }}
+              >
+                <RotateCcw className="size-4" />
+                Xoay trái
+              </Button>
+              <Button
+                type="button"
+                variant={rotationDirection === "cw" ? "default" : "outline"}
+                className="h-12 gap-2"
+                onPointerDown={() => startRotation("cw")}
+                onPointerUp={stopRobot}
+                onPointerLeave={() => {
+                  if (rotationDirectionRef.current === "cw") stopRobot();
+                }}
+              >
+                <RotateCw className="size-4" />
+                Xoay phải
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="pointer-events-auto flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="rounded-full bg-white/96 shadow-lg backdrop-blur"
-          onClick={() => {
-            activeKeysRef.current = new Set([" "]);
-            sendCurrentVelocity();
-            activeKeysRef.current = new Set();
-            sendCommand(0, 0, 0);
-          }}
-          title="Emergency stop"
-        >
-          <Square className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          className="rounded-full shadow-lg"
-          onClick={() => setIsHelpOpen((current) => !current)}
-          title="Keyboard teleop help"
-        >
-          <CircleHelp className="size-4" />
-        </Button>
-      </div>
+      <Button
+        type="button"
+        size="icon-lg"
+        className="pointer-events-auto rounded-full shadow-[0_18px_40px_rgba(37,99,235,0.32)]"
+        onClick={() => setPanelOpenSafely((current) => !current)}
+      >
+        <Gamepad2 className="size-5" />
+        <span className="sr-only">Toggle manual drive controls</span>
+      </Button>
     </div>
   );
 }

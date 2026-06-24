@@ -5,33 +5,33 @@ import math
 import json
 from pathlib import Path
 
-# Helper function to read a string from CDR binary representation
+
 def read_string(blob, offset):
-    # Align to 4-byte boundary
+    
     offset = (offset + 3) & ~3
     if offset + 4 > len(blob):
         return "", offset
     length = struct.unpack('<I', blob[offset:offset+4])[0]
     if offset + 4 + length > len(blob):
         return "", offset + 4
-    # CDR string has null terminator at the end
+    
     data = blob[offset+4:offset+4+length-1].decode('utf-8', errors='ignore')
     return data, offset + 4 + length
 
-# Parse geometry_msgs/msg/Twist
+
 def parse_twist(blob):
-    if len(blob) < 52: # 4 bytes header + 48 bytes doubles
+    if len(blob) < 52: 
         return 0.0, 0.0, 0.0
     vx, vy, vz, wx, wy, wz = struct.unpack('<dddddd', blob[4:52])
     return vx, vy, wz
 
-# Parse geometry_msgs/msg/TwistStamped
+
 def parse_twist_stamped(blob):
     if len(blob) < 64:
         return 0, 0.0, 0.0, 0.0
     sec, nanosec = struct.unpack('<iI', blob[4:12])
     frame_id, offset = read_string(blob, 12)
-    offset = (offset + 7) & ~7 # Align to double
+    offset = (offset + 7) & ~7 
     if offset + 48 <= len(blob):
         vx, vy, vz, wx, wy, wz = struct.unpack('<dddddd', blob[offset:offset+48])
     else:
@@ -39,7 +39,7 @@ def parse_twist_stamped(blob):
     stamp = sec + nanosec * 1e-9
     return stamp, vx, vy, wz
 
-# Parse std_msgs/msg/String legacy JSON mirrors
+
 def parse_string(blob):
     data, _ = read_string(blob, 4)
     return data
@@ -54,7 +54,7 @@ def parse_header(blob):
     frame_id, offset = read_string(blob, 12)
     return sec + nanosec * 1e-9, frame_id, offset
 
-# Parse cca_nmpc_controller/msg/Context
+
 def parse_context(blob):
     stamp, frame_id, offset = parse_header(blob)
     offset = align(offset, 8)
@@ -67,7 +67,7 @@ def parse_context(blob):
     occlusion_flag = bool(blob[offset]) if offset < len(blob) else False
     return stamp, phi_h, nearest_human_dist, d_safe, vx_max, vy_max, omega_max, occlusion_flag
 
-# Parse cca_nmpc_controller/msg/HumanStates
+
 def parse_human_states(blob):
     stamp, frame_id, offset = parse_header(blob)
     offset = align(offset, 4)
@@ -118,13 +118,13 @@ def parse_human_states(blob):
 
     return stamp, humans
 
-# Parse std_msgs/msg/Float32MultiArray
+
 def parse_float_array(blob):
     if len(blob) < 16:
         return []
     dim_len = struct.unpack('<I', blob[4:8])[0]
     offset = 8
-    # Skip dimensions
+    
     for _ in range(dim_len):
         _, offset = read_string(blob, offset)
         offset = (offset + 3) & ~3
@@ -143,7 +143,7 @@ def parse_float_array(blob):
             offset += 4
     return floats
 
-# Parse nav_msgs/msg/Odometry
+
 def parse_odom(blob):
     if len(blob) < 400:
         return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -168,7 +168,7 @@ def parse_odom(blob):
     
     return stamp, x, y, theta, vx, vy, wz
 
-# Parse cca_nmpc_controller/msg/SolverStats
+
 def parse_solver_stats(blob):
     if len(blob) < 30:
         return 0, 0.0, 0, "unknown", False, False
@@ -191,7 +191,7 @@ def parse_solver_stats(blob):
     
     return stamp, solve_time_ms, iter_count, status, timeout_flag, collision_flag
 
-# Parse nav_msgs/msg/Path
+
 def parse_path(blob):
     if len(blob) < 20:
         return []
@@ -220,7 +220,7 @@ def parse_path(blob):
         
     return waypoints
 
-# Parse sensor_msgs/msg/LaserScan
+
 def parse_laser_scan(blob):
     if len(blob) < 40:
         return 0.0, []

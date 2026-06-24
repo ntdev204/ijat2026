@@ -18,8 +18,8 @@ class CcanmpcCore
 public:
   explicit CcanmpcCore(CcanmpcParameters parameters);
 
-  // Precondition: robot_pose, reference_path, human states, and occupancy grid
-  // are expressed in the same global/control frame before calling the core.
+  
+  
   SolveResult solve(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     const geometry_msgs::msg::Twist & robot_velocity,
@@ -80,6 +80,6 @@ geometry_msgs::msg::PoseStamped makePose(
   double y,
   double yaw);
 
-}  // namespace rai_controller_cca_nmpc
+}  
 
-#endif  // RAI_CONTROLLER_CCA_NMPC__CCANMPC_CORE_HPP_
+#endif  

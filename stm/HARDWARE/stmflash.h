@@ -1,16 +1,16 @@
-/* ----------------------------------------------------------------------
- * Copyright (C) 2025-2026 RAI K63. All rights reserved.
- *
- * $Date:        2026-05-19
- * $Revision:    1.0
- *
- * Project:      RAI STM
- * Title:        stmflash.h
- *
- * Description:  stmflash.h module
- *
- * Target Processor: Cortex-M7/Cortex-M4/Cortex-M3/Cortex-M0
- * -------------------------------------------------------------------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #ifndef __STMFLASH_H__
 #define __STMFLASH_H__

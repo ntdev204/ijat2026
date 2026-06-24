@@ -26,6 +26,6 @@ private:
   std::string target_frame_;
 };
 
-}  // namespace rai_human_perception
+}  
 
-#endif  // RAI_HUMAN_PERCEPTION__HUMAN_STATE_ESTIMATOR_HPP_
+#endif  

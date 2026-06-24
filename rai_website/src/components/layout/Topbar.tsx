@@ -1,15 +1,23 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationMode } from "@/contexts/OperationModeContext";
-import { User as UserIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PanelLeft, User as UserIcon } from "lucide-react";
 
-export function Topbar() {
+interface TopbarProps {
+  onOpenMobileNav: () => void;
+}
+
+export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const { user } = useAuth();
   const { operationMode } = useOperationMode();
 
   return (
     <header className="z-10 flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:h-16 sm:px-6 sm:py-0">
       <div className="flex items-center gap-4">
-        {}
+        <Button type="button" variant="outline" size="icon-sm" className="sm:hidden" onClick={onOpenMobileNav}>
+          <PanelLeft className="h-4 w-4" />
+          <span className="sr-only">Open menu</span>
+        </Button>
         <h1 className="text-lg font-semibold text-slate-800">Dashboard</h1>
       </div>
 

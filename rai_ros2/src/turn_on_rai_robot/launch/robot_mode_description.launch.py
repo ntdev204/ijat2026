@@ -25,11 +25,11 @@ def generate_static_transform_publisher_node(translation, rotation, parent, chil
     )
     
 def generate_launch_description():
-    #akm
+    
     senior_akm = LaunchConfiguration('senior_akm', default='false')
     top_akm_bs = LaunchConfiguration('top_akm_bs', default='false')
     top_akm_dl = LaunchConfiguration('top_akm_dl', default='false')
-    #mec
+    
     senior_mec_bs = LaunchConfiguration('senior_mec_bs', default='false')
     senior_mec_dl = LaunchConfiguration('senior_mec_dl', default='false')
     top_mec_bs = LaunchConfiguration('top_mec_bs', default='false')
@@ -37,24 +37,24 @@ def generate_launch_description():
     mec_EightDrive_robot = LaunchConfiguration('mec_EightDrive_robot', default='false')
     flagship_mec_bs_robot = LaunchConfiguration('flagship_mec_bs_robot', default='false')
     flagship_mec_dl_robot = LaunchConfiguration('flagship_mec_dl_robot', default='false')
-    #omni
+    
     senior_omni = LaunchConfiguration('senior_omni', default='false')
     top_omni = LaunchConfiguration('top_omni', default='false')
-    #4wd
+    
     senior_4wd_bs_robot = LaunchConfiguration('senior_4wd_bs_robot', default='false')
     senior_4wd_dl_robot = LaunchConfiguration('senior_4wd_dl_robot', default='false')
     flagship_4wd_bs_robot = LaunchConfiguration('flagship_4wd_bs_robot', default='false')
     flagship_4wd_dl_robot = LaunchConfiguration('flagship_4wd_dl_robot', default='false')
     top_4wd_bs_robot = LaunchConfiguration('top_4wd_bs_robot', default='false')
     top_4wd_dl_robot = LaunchConfiguration('top_4wd_dl_robot', default='false')
-    #diff*5
+    
     senior_diff_robot = LaunchConfiguration('senior_diff_robot', default='false')
     four_wheel_diff_bs = LaunchConfiguration('four_wheel_diff_bs', default='false')
     four_wheel_diff_dl = LaunchConfiguration('four_wheel_diff_dl', default='false')
     flagship_four_wheel_diff_bs_robot = LaunchConfiguration('flagship_four_wheel_diff_bs_robot', default='false')
     flagship_four_wheel_diff_dl_robot = LaunchConfiguration('flagship_four_wheel_diff_dl_robot', default='false')
 
-    #akm  3 lidar is ls_lidar,change the parameter from 3.14 to 0
+    
     senior_akm_ = GroupAction(
         condition=IfCondition(senior_akm),
         actions=[
@@ -76,7 +76,7 @@ def generate_launch_description():
         generate_static_transform_publisher_node(['0.25033 ', '0.00182', '0.1504'], ['0', '0', '0'], 'base_footprint', 'laser'),
         generate_static_transform_publisher_node(['0.32039', '0.00164', '0.13208'], ['0', '0', '0'], 'base_footprint', 'camera_link'),     
     ])  
-    #mec  7 lidar is ls_lidar,change the parameter from 3.14 to 0
+    
     senior_mec_bs_ = GroupAction(
         condition=IfCondition(senior_mec_bs),
         actions=[
@@ -126,7 +126,7 @@ def generate_launch_description():
         generate_static_transform_publisher_node(['0.23835', '0.00002', '0.28466'], ['0', '0', '0'], 'base_footprint', 'laser'),
         generate_static_transform_publisher_node(['0.29014', '0.00024', '0.2122'], ['0', '0', '0'], 'base_footprint', 'camera_link'),   
     ]) 
-    # add omni*2, lidar is ls_lidar,change the parameter from 3.14 to 0  
+    
     senior_omni_ = GroupAction(
         condition=IfCondition(senior_omni),
         actions=[
@@ -142,8 +142,8 @@ def generate_launch_description():
         generate_static_transform_publisher_node(['0.21733', '0.00026', '0.1127'], ['0', '0', '0'], 'base_footprint', 'camera_link'),    
     ]) 
 
-    #
-    #4wd  6 lidar is ls_lidar,change the parameter from 3.14 to 0
+    
+    
     senior_4wd_bs_robot_ = GroupAction(
         condition=IfCondition(senior_4wd_bs_robot),
         actions=[
@@ -188,7 +188,7 @@ def generate_launch_description():
     ]) 
     
     
-    #diff  5 lidar is ls_lidar,change the parameter from 3.14 to 0
+    
     senior_diff_robot_ = GroupAction(
         condition=IfCondition(senior_diff_robot),
         actions=[
@@ -226,13 +226,13 @@ def generate_launch_description():
     ]) 
 
      
-    # Create the launch description and populate
+    
     ld = LaunchDescription()
-    #add akm*3
+    
     ld.add_action(senior_akm_)
     ld.add_action(top_akm_bs_)
     ld.add_action(top_akm_dl_)
-    #add mec*7
+    
     ld.add_action(senior_mec_bs_)
     ld.add_action(senior_mec_dl_)
     ld.add_action(top_mec_bs_)
@@ -240,17 +240,17 @@ def generate_launch_description():
     ld.add_action(mec_EightDrive_robot_)
     ld.add_action(flagship_mec_bs_robot_)
     ld.add_action(flagship_mec_dl_robot_) 
-    #add omni*3
+    
     ld.add_action(senior_omni_)
     ld.add_action(top_omni_)
-    #add 4wd*6
+    
     ld.add_action(senior_4wd_bs_robot_)
     ld.add_action(senior_4wd_dl_robot_)
     ld.add_action(flagship_4wd_bs_robot_)
     ld.add_action(flagship_4wd_dl_robot_)
     ld.add_action(top_4wd_bs_robot_)
     ld.add_action(top_4wd_dl_robot_) 
-    #add diff*5
+    
     ld.add_action(senior_diff_robot_)
     ld.add_action(four_wheel_diff_bs_)
     ld.add_action(four_wheel_diff_dl_)

@@ -1,5 +1,7 @@
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Bot, LayoutDashboard, Video, Map, Database, Boxes, Power } from "lucide-react";
 
@@ -13,38 +15,70 @@ const NAV_ITEMS = [
   { name: "RViz2", href: "/rviz2", icon: Bot },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen: boolean;
+  onMobileOpenChange: (open: boolean) => void;
+}
+
+function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 flex h-18 border-t border-slate-200 bg-white/95 text-slate-700 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:static sm:h-full sm:w-64 sm:flex-col sm:border-r sm:border-t-0 sm:bg-white sm:shadow-none sm:backdrop-blur-none">
-      <div className="hidden h-16 items-center border-b border-slate-200 px-6 sm:flex">
+    <>
+      <div className="flex h-16 items-center border-b border-slate-200 px-6">
         <span className="text-xl font-bold tracking-wide text-slate-900">ROBOT<span className="text-blue-600">OS</span></span>
       </div>
-      <nav className="w-full overflow-x-auto overflow-y-hidden py-2 sm:flex-1 sm:overflow-y-auto sm:py-4">
-        <ul className="flex min-w-max items-center gap-1 px-2 sm:block sm:min-w-0 sm:space-y-1 sm:px-3">
+      <nav className="flex-1 overflow-y-auto py-4">
+        <ul className="space-y-1 px-3">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (
-              <li key={item.name} className="sm:block">
+              <li key={item.name}>
                 <Link
                   href={item.href}
+                  onClick={onNavigate}
                   className={cn(
-                    "flex min-h-14 min-w-16 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors sm:min-h-0 sm:min-w-0 sm:flex-row sm:justify-start sm:gap-3 sm:px-3 sm:py-2.5 sm:text-sm",
+                    "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                     isActive 
                       ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   )}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
-                  <span className="max-w-14 truncate sm:max-w-none">{item.name}</span>
+                  <span className="truncate">{item.name}</span>
                 </Link>
               </li>
             );
           })}
         </ul>
       </nav>
-    </div>
+    </>
+  );
+}
+
+export function Sidebar({ mobileOpen, onMobileOpenChange }: SidebarProps) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent side="left" className="w-[288px] gap-0 p-0" showCloseButton={false}>
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation menu</SheetTitle>
+            <SheetDescription>Open pages in the robot dashboard.</SheetDescription>
+          </SheetHeader>
+          <div className="flex h-full flex-col bg-white text-slate-700">
+            <SidebarNav onNavigate={() => onMobileOpenChange(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <aside className="hidden h-full w-64 flex-col border-r border-slate-200 bg-white text-slate-700 sm:flex">
+      <SidebarNav />
+    </aside>
   );
 }

@@ -97,15 +97,15 @@ def generate_launch_description():
             generate_static_transform_publisher_node(['0.19024', '0.00024', '0.22022'], ['0', '0', '0'], 'base_footprint', 'camera_link'),        
     ])
     
-    # Create the launch description and populate
+    
     ld = LaunchDescription()
 
-    # Set environment variables
-    # Declare the launch options
+    
+    
 
-    #ld.add_action(declare_use_composition_cmd)
+    
 
-    # Add the actions to launch all of the localiztion nodes
+    
     ld.add_action(r3s_mec_)
     ld.add_action(r3s_4wd_)
       

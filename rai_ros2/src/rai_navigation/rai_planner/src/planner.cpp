@@ -22,7 +22,7 @@ std::vector<std::string> & plannerIds()
   return ids;
 }
 
-}  // namespace
+}  
 
 std::string normalizePlannerId(std::string value)
 {
@@ -64,4 +64,4 @@ void registerPlanner(const std::string & id, PlannerFactory factory)
   planners[normalized] = factory;
 }
 
-}  // namespace rai_planner
+}  

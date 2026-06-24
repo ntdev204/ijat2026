@@ -8,9 +8,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
 
-#def launch(launch_descriptor, argv):
+
 def generate_launch_description():
-    # Declare the launch arguments
+    
     use_rai_imu_declare = DeclareLaunchArgument(
         'use_rai_imu',
         default_value='false',  
@@ -20,7 +20,7 @@ def generate_launch_description():
 
     
 
-    # Extract common parameters
+    
     common_params = {
         'usart_port_name': '/dev/rai_controller',
         'serial_baud_rate': 115200,
@@ -63,7 +63,7 @@ def generate_launch_description():
 
 
     ld = LaunchDescription()
-    ld.add_action(use_rai_imu_declare)  # 添加声明到ld
+    ld.add_action(use_rai_imu_declare)  
     ld.add_action(turn_on_robot_use_imu)
     ld.add_action(turn_on_robot)
 

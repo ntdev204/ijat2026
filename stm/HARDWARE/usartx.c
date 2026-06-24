@@ -1,16 +1,16 @@
-/* ----------------------------------------------------------------------
- * Copyright (C) 2025-2026 RAI K63. All rights reserved.
- *
- * $Date:        2026-05-19
- * $Revision:    1.0
- *
- * Project:      RAI STM
- * Title:        usartx.c
- *
- * Description:  usartx.c module
- *
- * Target Processor: Cortex-M7/Cortex-M4/Cortex-M3/Cortex-M0
- * -------------------------------------------------------------------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #include "usartx.h"
 SEND_DATA Send_Data;

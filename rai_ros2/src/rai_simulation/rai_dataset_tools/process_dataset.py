@@ -9,7 +9,7 @@ import sys
 import argparse
 from pathlib import Path
 
-# Add script directory to Python path to import sister scripts
+
 SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(str(SCRIPT_DIR))
 
@@ -36,7 +36,7 @@ def main():
     print(f"Dataset directory: {base_path.resolve()}")
     print(f"Split seed: {args.seed}")
 
-    # Step 1: Scan for run directories containing rosbag2
+    
     print("\n[Step 1/5] Scanning for run directories containing rosbag2...")
     run_dirs = []
     for root, dirs, files in os.walk(base_path):
@@ -49,7 +49,7 @@ def main():
         print("Error: No rosbag2 runs found. Cannot proceed.", file=sys.stderr)
         sys.exit(1)
 
-    # Step 2: Extract raw topics to Parquet for each run
+    
     print("\n[Step 2/5] Extracting rosbag2 databases to raw Parquet files...")
     raw_success = 0
     for idx, r_dir in enumerate(run_dirs, start=1):
@@ -62,7 +62,7 @@ def main():
             
     print(f"Raw extraction completed: {raw_success}/{total_runs} runs processed successfully.")
 
-    # Step 3: Synchronize signals, compute tracking errors & command jerks
+    
     print("\n[Step 3/5] Synchronizing high-frequency telemetry & computing jerks/clearance...")
     sync_success = 0
     for idx, r_dir in enumerate(run_dirs, start=1):
@@ -75,7 +75,7 @@ def main():
             
     print(f"Synchronization completed: {sync_success}/{total_runs} runs processed successfully.")
 
-    # Step 4: Build run index and compute run-level evaluation metrics
+    
     print("\n[Step 4/5] Building centralized run index and computing evaluation metrics (RMSE, Jerk, Clearance)...")
     index_ok = False
     try:
@@ -87,7 +87,7 @@ def main():
         print("Error: Centralized run index generation failed. Aborting split compile.", file=sys.stderr)
         sys.exit(1)
 
-    # Step 5: Perform split and compile consolidated split Parquet files
+    
     print("\n[Step 5/5] Splitting dataset (70/15/15) and compiling consolidated split Parquet files...")
     split_ok = False
     try:

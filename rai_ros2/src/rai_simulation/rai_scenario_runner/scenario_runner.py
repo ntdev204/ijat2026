@@ -16,14 +16,14 @@ import subprocess
 import threading
 from typing import List, Dict, Any, Optional
 
-# ROS 2 imports
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, Twist
 from std_msgs.msg import String
 
-# Default paths
+
 WORKSPACE_DIR = "d:/Research/ijat2026"
 URDF_PATH = os.path.join(WORKSPACE_DIR, "rai_ros2/src/rai_robot_urdf/urdf/mini_mec_robot.urdf")
 CONTROLLER_PARAMS_PATH = os.path.join(
@@ -88,7 +88,7 @@ class TrialMonitorNode(Node):
         self.collision_detected = False
         self.actor_triggered = False
         
-        # Publishers and Subscribers
+        
         self.odom_sub = self.create_subscription(
             Odometry,
             '/odom_combined',
@@ -120,12 +120,12 @@ class TrialMonitorNode(Node):
         
         self.current_pose = [pos.x, pos.y, yaw]
         
-        # Check if goal reached
+        
         dist_to_goal = math.hypot(pos.x - self.goal_pose[0], pos.y - self.goal_pose[1])
-        if dist_to_goal < 0.35:  # tolerance
+        if dist_to_goal < 0.35:  
             self.goal_reached = True
             
-        # Trigger S5 human when robot crosses x = 2.0
+        
         if self.scenario_id == "S5" and not self.actor_triggered and pos.x >= 2.0:
             self.trigger_s5_actor()
 
@@ -148,20 +148,20 @@ class TrialMonitorNode(Node):
         self.actor_triggered = True
         self.get_logger().info("Robot crossed x = 2.0! Triggering S5 human actor...")
         
-        # Start a thread to move the actor from y = 6.0 to y = 5.0 at 1.2 m/s
-        # Distance = 1.0m, Velocity = 1.2 m/s, Duration = 1.0 / 1.2 = 0.833 seconds
+        
+        
         def move_thread():
-            rate = self.create_rate(25) # 25 Hz
+            rate = self.create_rate(25) 
             start_time = time.time()
             duration = 1.0 / 1.2
             
             while time.time() - start_time < duration:
                 twist = Twist()
-                twist.linear.y = -1.2  # move along negative Y-axis
+                twist.linear.y = -1.2  
                 self.human_vel_pub.publish(twist)
                 rate.sleep()
                 
-            # Stop the actor at y = 5.0
+            
             stop_twist = Twist()
             self.human_vel_pub.publish(stop_twist)
             self.get_logger().info("S5 actor reached target position [3.0, 5.0] and stopped.")
@@ -185,7 +185,7 @@ def clean_leftover_processes():
         for cmd in cmds:
             subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
-        # Linux / WSL
+        
         subprocess.run('pkill -9 -f "ign gazebo"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run('pkill -9 -f "ros2"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run('pkill -9 -f "controller_server"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -203,27 +203,27 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     """Execute a single scenario simulation run."""
     print(f"\n==================== Starting Scenario {scenario_id} - Run {run_idx:03d} ====================")
     
-    # 1. Prepare Paths
+    
     scen_info = SCENARIOS[scenario_id]
     world_path = os.path.join(WORLDS_DIR, scen_info["world"])
     run_name = f"run_{run_idx:03d}"
     run_dir = os.path.join(OUTPUT_BASE_DIR, scen_info["name"], controller_id, run_name)
     os.makedirs(run_dir, exist_ok=True)
     
-    # Generate jittered poses
+    
     start_pose = generate_jittered_pose(scen_info["start"])
     goal_pose = generate_jittered_pose(scen_info["goal"])
     
-    # 2. Cleanup existing nodes
+    
     clean_leftover_processes()
     
-    # 3. Launch Gazebo Fortress (headless mode suggested to save resources)
-    print(f"Launching Gazebo with world: {scen_info['world']}")
-    gz_cmd = f"ign gazebo {world_path} -r -s"  # -s runs headless
-    gz_proc = subprocess.Popen(gz_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(4.0)  # wait for Gazebo to start
     
-    # 4. Spawn the Mecanum robot
+    print(f"Launching Gazebo with world: {scen_info['world']}")
+    gz_cmd = f"ign gazebo {world_path} -r -s"  
+    gz_proc = subprocess.Popen(gz_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(4.0)  
+    
+    
     print(f"Spawning mini_mec_robot at start pose: {start_pose}")
     spawn_cmd = (
         f"ros2 run ros_gz_sim create -world {scen_info['world_name']} "
@@ -233,7 +233,7 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     subprocess.run(spawn_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     
-    # 5. Launch ros_gz_bridge
+    
     print("Launching ROS 2 Gazebo bridges...")
     bridge_topics = [
         "/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock",
@@ -250,13 +250,13 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     bridge_proc = subprocess.Popen(bridge_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     
-    # 6. Launch context monitor (from rai_dataset_collection)
+    
     print("Launching context monitor node...")
     context_cmd = "ros2 run rai_dataset_collection context_monitor --ros-args -p use_sim_time:=True"
     context_proc = subprocess.Popen(context_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.0)
     
-    # 7. Launch standalone RAI navigation stack.
+    
     print("Launching standalone RAI navigation stack...")
     controller_cmd = (
         "ros2 launch rai_navigation rai_navigation.launch.py "
@@ -267,7 +267,7 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     controller_proc = subprocess.Popen(controller_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(4.0)
     
-    # 8. Start ROS bag recording
+    
     bag_out_dir = os.path.join(run_dir, "rosbag2")
     bag_topics = [
         "/scan", "/tf", "/tf_static", "/odom_combined", "/cmd_vel",
@@ -278,7 +278,7 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     print(f"Starting ros2 bag record to {bag_out_dir}...")
     bag_cmd = f"ros2 bag record -o {bag_out_dir} {' '.join(bag_topics)}"
     
-    # Run bag recording in a separate process group if on Windows to allow sending CTRL_C
+    
     if sys.platform == "win32":
         bag_proc = subprocess.Popen(bag_cmd, shell=True, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
     else:
@@ -286,20 +286,20 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
         
     time.sleep(2.0)
     
-    # 9. ROS 2 node to monitor the trial progress
+    
     rclpy.init()
     monitor = TrialMonitorNode(start_pose, goal_pose, scenario_id)
     
-    # Send start goal command
+    
     monitor.send_goal()
     
-    # Run the trial loop
-    max_duration = 35.0  # seconds timeout
+    
+    max_duration = 35.0  
     start_time = time.time()
     success = False
     reason = "timeout"
     
-    rate = monitor.create_rate(10) # 10 Hz
+    rate = monitor.create_rate(10) 
     while time.time() - start_time < max_duration:
         rclpy.spin_once(monitor, timeout_sec=0.1)
         
@@ -315,7 +315,7 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
     monitor.destroy_node()
     rclpy.shutdown()
     
-    # 10. Clean stop bag recording
+    
     print("Stopping bag recording...")
     if sys.platform == "win32":
         subprocess.run(f"taskkill /F /PID {bag_proc.pid} /T", shell=True)
@@ -326,10 +326,10 @@ def run_trial(scenario_id: str, run_idx: int, controller_id: str, global_planner
             pass
     time.sleep(2.0)
     
-    # 11. Clean up processes
+    
     clean_leftover_processes()
     
-    # 12. Save metadata JSON
+    
     metadata = {
         "schema_version": "2.0.0",
         "flow": "continuous_context_adaptive_ca_nmpc",
@@ -395,7 +395,7 @@ def main():
                 
         print(f"\nScenario {scen} Finished. Success rate: {scen_success_count}/{args.runs} ({scen_success_count/args.runs * 100:.1f}%)")
         
-    # Write batch summary run index CSV
+    
     run_index_path = os.path.join(OUTPUT_BASE_DIR, "run_index.csv")
     print(f"\nWriting batch run index to: {run_index_path}")
     

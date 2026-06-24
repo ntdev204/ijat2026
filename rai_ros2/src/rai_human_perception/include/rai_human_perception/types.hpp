@@ -52,6 +52,6 @@ struct CameraIntrinsics
   bool valid{false};
 };
 
-}  // namespace rai_human_perception
+}  
 
-#endif  // RAI_HUMAN_PERCEPTION__TYPES_HPP_
+#endif  

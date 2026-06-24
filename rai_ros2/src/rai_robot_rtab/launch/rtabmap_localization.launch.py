@@ -21,12 +21,12 @@ def generate_launch_description():
           'qos_scan':qos,
           'qos_image':qos,
           'qos_imu':qos,
-          # RTAB-Map's parameters should be strings:
+          
           'Reg/Strategy':'1',
           'Reg/Force3DoF':'true',
           'RGBD/NeighborLinkRefining':'True',
-          'Grid/RangeMin':'0.2', # ignore laser scan points on the robot itself
-          'Optimizer/GravitySigma':'0' # Disable imu constraints (we are already in 2D)
+          'Grid/RangeMin':'0.2', 
+          'Optimizer/GravitySigma':'0' 
     }
 
     remappings=[
@@ -38,7 +38,7 @@ def generate_launch_description():
 
     return LaunchDescription([
 
-        # Launch arguments
+        
         DeclareLaunchArgument(
             'use_sim_time', default_value='false',
             description='Use simulation (Gazebo) clock if true'),
@@ -51,13 +51,13 @@ def generate_launch_description():
             'localization', default_value='true',
             description='Launch in localization mode.'),
         
-        # Nodes to launch
+        
         Node(
             package='rtabmap_sync', executable='rgbd_sync', output='screen',
             parameters=[{'approx_sync':True, 'approx_sync_max_interval':0.01, 'use_sim_time':use_sim_time, 'qos':qos}],
             remappings=remappings),
 
-        # SLAM Mode:
+        
         Node(
             condition=UnlessCondition(localization),
             package='rtabmap_slam', executable='rtabmap', output='screen',
@@ -65,7 +65,7 @@ def generate_launch_description():
             remappings=remappings,
             arguments=['-d']),
             
-        # Localization mode:
+        
         Node(
             condition=IfCondition(localization),
             package='rtabmap_slam', executable='rtabmap', 

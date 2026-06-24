@@ -34,7 +34,7 @@ def generate_launch_description():
             name='slam_toolbox',
             output='screen',
             parameters=[params_file],
-            # Không remap odom ở đây — SLAM Toolbox dùng TF (odom_frame param)
-            # chứ không subscribe trực tiếp /odom topic.
+            
+            
         )
     ])

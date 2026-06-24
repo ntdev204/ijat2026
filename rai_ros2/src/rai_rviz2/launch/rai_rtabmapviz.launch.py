@@ -21,10 +21,10 @@ def generate_launch_description():
           ('depth/image', '/camera/depth/image')]
 
     return LaunchDescription([
-        # Set env var to print messages to stdout immediately
+        
         SetEnvironmentVariable('RCUTILS_CONSOLE_STDOUT_LINE_BUFFERED', '1'),
 
-        # Nodes to launch
+        
 
         Node(
             package='rtabmap_ros', executable='rtabmapviz',

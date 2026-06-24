@@ -72,7 +72,7 @@ def split_dataset(base_path, seed=42):
     (splits_dir / "val_runs.txt").write_text("\n".join(val_runs) + "\n", encoding="utf-8")
     (splits_dir / "test_runs.txt").write_text("\n".join(test_runs) + "\n", encoding="utf-8")
     
-    # Compile individual run parquets into single consolidated parquet files for each split
+    
     for split_name, run_paths in [("train", train_runs), ("val", val_runs), ("test", test_runs)]:
         print(f"Compiling consolidated parquet for split: {split_name}...")
         dfs = []

@@ -5,7 +5,7 @@ from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 import launch_ros.actions
 
-#def launch(launch_descriptor, argv):
+
 def generate_launch_description():
 
 

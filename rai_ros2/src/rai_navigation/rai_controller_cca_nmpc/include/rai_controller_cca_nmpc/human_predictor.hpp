@@ -39,6 +39,6 @@ private:
   double computePhi(const SingleHumanPrediction & prediction) const;
 };
 
-}  // namespace rai_controller_cca_nmpc
+}  
 
-#endif  // RAI_CONTROLLER_CCA_NMPC__HUMAN_PREDICTOR_HPP_
+#endif  

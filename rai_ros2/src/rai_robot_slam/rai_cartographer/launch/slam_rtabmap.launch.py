@@ -32,15 +32,15 @@ def generate_launch_description():
 
     return LaunchDescription([
         rai_slam,
-        # Set env var to print messages to stdout immediately
+        
         SetEnvironmentVariable('RCUTILS_CONSOLE_STDOUT_LINE_BUFFERED', '1'),
 
-        # Launch arguments
+        
         DeclareLaunchArgument(
             'use_sim_time', default_value='false',
             description='Use simulation (Gazebo) clock if true'),
 
-        # Nodes to launch
+        
         Node(
             package='rtabmap_ros', executable='rtabmap', output='screen',
             parameters=parameters,

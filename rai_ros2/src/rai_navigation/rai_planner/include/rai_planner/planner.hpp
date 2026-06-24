@@ -43,6 +43,6 @@ const std::vector<std::string> & availablePlannerIds();
 std::unique_ptr<Planner> createPlanner(const std::string & id);
 void registerPlanner(const std::string & id, PlannerFactory factory);
 
-}  // namespace rai_planner
+}  
 
-#endif  // RAI_PLANNER__PLANNER_HPP_
+#endif  

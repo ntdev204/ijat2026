@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Copyright 2026 RAI Project
-#
-# Licensed under the Apache License, Version 2.0
+
+
+
 
 """
 RAI Waypoint Cycle — tuần hoàn qua danh sách waypoint bấm trên RViz.
@@ -40,17 +40,17 @@ class RaiWaypointCycle(Node):
         self._last_state: str = 'IDLE'
         self._retry_count: int = 0
 
-        # Publishers
+        
         self._goal_pub  = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self._marks_pub = self.create_publisher(MarkerArray, '/rai_waypoints', 100)
 
-        # Subscribers
+        
         self.create_subscription(PointStamped, '/clicked_point', self._on_click, 10)
         self.create_subscription(String, '/rai_navigation/status', self._on_status, 10)
 
         self.get_logger().info('rai_waypoint_cycle ready — click points in RViz to add waypoints.')
 
-    # ------------------------------------------------------------------
+    
     def _on_click(self, msg: PointStamped) -> None:
         pose = PoseStamped()
         pose.header.frame_id = 'map'
@@ -75,7 +75,7 @@ class RaiWaypointCycle(Node):
             self._send_goal(self._index)
 
     def _on_status(self, msg: String) -> None:
-        # Status string may contain detail after colon, e.g. "SUCCEEDED: goal reached"
+        
         state = msg.data.split(':')[0].strip()
 
         if state == self._last_state:
@@ -94,7 +94,7 @@ class RaiWaypointCycle(Node):
             self._index = (self._index + 1) % len(self._waypoints)
             self._send_goal(self._index)
 
-        else:  # FAILED or CANCELED
+        else:  
             if self._retry_count < self.max_retries_:
                 self._retry_count += 1
                 self.get_logger().warn(
@@ -127,7 +127,7 @@ class RaiWaypointCycle(Node):
     def _publish_markers(self) -> None:
         arr = MarkerArray()
         for i, wp in enumerate(self._waypoints):
-            # Sphere marker at waypoint position
+            
             sphere = Marker()
             sphere.header.frame_id = 'map'
             sphere.header.stamp = self.get_clock().now().to_msg()
@@ -143,7 +143,7 @@ class RaiWaypointCycle(Node):
             sphere.pose = wp.pose
             arr.markers.append(sphere)
 
-            # Text label with waypoint index
+            
             label = Marker()
             label.header = sphere.header
             label.ns = 'rai_waypoints_label'
@@ -157,7 +157,7 @@ class RaiWaypointCycle(Node):
             label.color.b = 1.0
             label.pose.position.x = wp.pose.position.x
             label.pose.position.y = wp.pose.position.y
-            label.pose.position.z = 0.3           # float above the sphere
+            label.pose.position.z = 0.3           
             label.pose.orientation = wp.pose.orientation
             label.text = str(i)
             arr.markers.append(label)

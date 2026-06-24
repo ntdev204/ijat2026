@@ -123,6 +123,6 @@ struct SolveResult
   double q_scale{1.0};
 };
 
-}  // namespace rai_controller_cca_nmpc
+}  
 
-#endif  // RAI_CONTROLLER_CCA_NMPC__CCANMPC_TYPES_HPP_
+#endif  

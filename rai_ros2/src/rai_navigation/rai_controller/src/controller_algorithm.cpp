@@ -22,7 +22,7 @@ std::vector<std::string> & controllerIds()
   return ids;
 }
 
-}  // namespace
+}  
 
 std::string normalizeControllerId(std::string value)
 {
@@ -66,4 +66,4 @@ void registerController(const std::string & id, ControllerFactory factory)
   controllers[normalized] = factory;
 }
 
-}  // namespace rai_controller
+}  

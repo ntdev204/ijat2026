@@ -50,11 +50,11 @@ std::unique_ptr<rai_planner::Planner> create()
   return std::make_unique<DijkstraPlanner>();
 }
 
-}  // namespace
+}  
 
 void registerDijkstraPlanner()
 {
   rai_planner::registerPlanner("DIJKSTRA", create);
 }
 
-}  // namespace rai_planner_dijkstra
+}  

@@ -13,7 +13,7 @@ PACKAGE_DIR = SCRIPT_DIR.parent / "rai_dataset_collection"
 if str(PACKAGE_DIR.parent) not in sys.path:
     sys.path.append(str(PACKAGE_DIR.parent))
 
-from rai_dataset_collection.research_dataset_spec import (  # noqa: E402
+from rai_dataset_collection.research_dataset_spec import (  
     ABLATION_CONTROLLERS,
     BASELINE_CONTROLLERS,
     SCENARIO_SPECS,

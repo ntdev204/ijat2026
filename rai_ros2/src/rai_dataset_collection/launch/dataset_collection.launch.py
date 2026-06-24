@@ -27,10 +27,10 @@ def generate_launch_description():
     Note: Manual control mode - user drives robot following MANUAL_SCENARIOS.md
     """
 
-    # Package directories
+    
     rai_robot_dir = get_package_share_directory('turn_on_rai_robot')
 
-    # Launch arguments
+    
     scenario_arg = DeclareLaunchArgument(
         'scenario',
         default_value='S1_open_zone',
@@ -67,7 +67,7 @@ def generate_launch_description():
         description='Auto-start recording'
     )
 
-    # Get launch configurations
+    
     scenario = LaunchConfiguration('scenario')
     controller = LaunchConfiguration('controller')
     environment = LaunchConfiguration('environment')
@@ -75,7 +75,7 @@ def generate_launch_description():
     run_id = LaunchConfiguration('run_id')
     auto_start = LaunchConfiguration('auto_start')
 
-    # Log banner
+    
     log_banner = LogInfo(
         msg='\n'
             '╔════════════════════════════════════════════════════════════╗\n'
@@ -84,8 +84,8 @@ def generate_launch_description():
             '╚════════════════════════════════════════════════════════════╝\n'
     )
 
-    # 1. Hardware Layer (from turn_on_rai_robot)
-    # Khởi động: Chassis, LiDAR, Camera, IMU, Encoders
+    
+    
     hardware_launch = TimerAction(
         period=2.0,
         actions=[
@@ -98,9 +98,9 @@ def generate_launch_description():
         ]
     )
 
-    # 2. Continuous context estimator
+    
     context_monitor = TimerAction(
-        period=12.0,  # Wait for hardware to stabilize
+        period=12.0,  
         actions=[
             LogInfo(msg='[MAIN] Launching continuous context estimator...'),
             Node(
@@ -133,8 +133,8 @@ def generate_launch_description():
         ]
     )
 
-    # 3. Dataset Collector
-    # Record sensor data to ROS2 bag files
+    
+    
     dataset_collector = TimerAction(
         period=14.0,
         actions=[
@@ -157,7 +157,7 @@ def generate_launch_description():
         ]
     )
 
-    # Ready message
+    
     ready_log = TimerAction(
         period=18.0,
         actions=[
@@ -174,7 +174,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # Arguments
+        
         scenario_arg,
         controller_arg,
         environment_arg,
@@ -182,18 +182,18 @@ def generate_launch_description():
         run_id_arg,
         auto_start_arg,
 
-        # Banner
+        
         log_banner,
 
-        # 1. Hardware layer (sensors, motors)
+        
         hardware_launch,
 
-        # 2. Context detection
+        
         context_monitor,
 
-        # 3. Data recording
+        
         dataset_collector,
 
-        # Ready message
+        
         ready_log,
     ])

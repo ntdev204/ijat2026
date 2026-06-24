@@ -5,21 +5,21 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, Float, String, Boolean, DateTime, Text, ForeignKey
 
-# Setup database logger
+
 logger = logging.getLogger("rai_web_api.database")
 
-# DB URLs: Default to PostgreSQL but gracefully fallback to SQLite if needed
+
 DATABASE_URL_PG = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/rai_db"
 )
-# Local fallback SQLite path
+
 SQLITE_DB_PATH = os.path.expanduser("~/rai_datasets/rai_web.db")
 DATABASE_URL_SQLITE = f"sqlite+aiosqlite:///{SQLITE_DB_PATH}"
 
 Base = declarative_base()
 
-# --- MODELS ---
+
 
 class RobotConfig(Base):
     __tablename__ = 'robot_configs'
@@ -68,7 +68,7 @@ class DatasetRun(Base):
     raw_bag_path = Column(String(250), nullable=True)
     metadata_path = Column(String(250), nullable=True)
     zip_path = Column(String(250), nullable=True)
-    status = Column(String(20), nullable=False) # RECORDING, COMPLETED, FAILED, COMPRESSED
+    status = Column(String(20), nullable=False) 
     validation_status = Column(String(20), nullable=True)
     success = Column(Boolean, nullable=True)
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -169,12 +169,12 @@ class SavedMap(Base):
     resolution = Column(Float, nullable=False)
     origin_x = Column(Float, nullable=False)
     origin_y = Column(Float, nullable=False)
-    grid_data = Column(Text, nullable=False)  # Base64 encoded occupancy grid data or JSON string
+    grid_data = Column(Text, nullable=False)  
     yaml_path = Column(String(250), nullable=True)
     pgm_path = Column(String(250), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# --- DATABASE ENGINE & SESSION MANAGERS ---
+
 
 _engine = None
 _SessionLocal = None
@@ -182,28 +182,28 @@ _SessionLocal = None
 async def init_db():
     global _engine, _SessionLocal
 
-    # Try PostgreSQL first
+    
     try:
         logger.info("Connecting to PostgreSQL database...")
         _engine = create_async_engine(DATABASE_URL_PG, echo=False)
-        # Verify connection by running a dummy select
+        
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Successfully connected and initialized PostgreSQL!")
     except Exception as e:
         logger.warning(f"PostgreSQL connection failed: {e}. Falling back to SQLite...")
 
-        # Fallback to local SQLite
+        
         os.makedirs(os.path.dirname(SQLITE_DB_PATH), exist_ok=True)
         _engine = create_async_engine(DATABASE_URL_SQLITE, echo=False)
         logger.info(f"SQLite DB path: {SQLITE_DB_PATH}")
 
-    # Bind sessionmaker
+    
     _SessionLocal = sessionmaker(
         _engine, expire_on_commit=False, class_=AsyncSession
     )
 
-    # Make tables and seed initial data
+    
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_schema_columns(conn)
@@ -306,7 +306,7 @@ async def _ensure_schema_columns(conn):
                         f'ALTER TABLE {table} ADD COLUMN {column_name} {column_type}'
                     )
             except Exception:
-                # Best effort for local development databases.
+                
                 pass
 
 async def get_db():
@@ -329,7 +329,7 @@ async def seed_initial_data():
     """Seed initial robot configuration and scenarios if tables are empty"""
     from sqlalchemy import select
     async with _SessionLocal() as session:
-        # Check config
+        
         result = await session.execute(select(RobotConfig))
         if not result.scalars().first():
             config = RobotConfig(

@@ -5,6 +5,14 @@ function configuredApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_URL?.trim();
 }
 
+function configuredPiApiBaseUrl() {
+  return process.env.NEXT_PUBLIC_PI_API_URL?.trim();
+}
+
+function configuredJetsonApiBaseUrl() {
+  return process.env.NEXT_PUBLIC_JETSON_API_URL?.trim();
+}
+
 function isFrontendDevHost(location: Location) {
   return location.port === "3000";
 }
@@ -23,9 +31,58 @@ export function getApiBaseUrl() {
   return `http://${DEFAULT_LAN_HOST}:${DEFAULT_ROBOT_API_PORT}`;
 }
 
-export function getWebSocketBaseUrl() {
+function resolveDirectApiBase(endpoint: string) {
+  const normalized = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  if (normalized === "/api/webrtc/offer") {
+    return configuredJetsonApiBaseUrl();
+  }
+
+  if (
+    normalized.startsWith("/api/dataset") ||
+    normalized.startsWith("/api/map") ||
+    normalized.startsWith("/api/rai-navigation") ||
+    normalized.startsWith("/api/robot") ||
+    normalized.startsWith("/api/rviz") ||
+    normalized.startsWith("/api/telemetry/current")
+  ) {
+    return configuredPiApiBaseUrl();
+  }
+
+  if (normalized.startsWith("/api/system/components/camera/")) {
+    return configuredJetsonApiBaseUrl();
+  }
+
+  if (
+    normalized.startsWith("/api/system/components/robot/") ||
+    normalized.startsWith("/api/system/components/lidar/") ||
+    normalized.startsWith("/api/system/components/slam/") ||
+    normalized.startsWith("/api/system/components/navigation/") ||
+    normalized.startsWith("/api/system/components/dataset/")
+  ) {
+    return configuredPiApiBaseUrl();
+  }
+
+  return undefined;
+}
+
+export function getWebSocketBaseUrl(path?: string) {
   const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
+  if (configured && !path) return configured.replace(/\/$/, "");
+
+  const normalized = path?.startsWith("/") ? path : path ? `/${path}` : "";
+  if (
+    normalized.startsWith("/api/ws/telemetry") ||
+    normalized.startsWith("/api/ws/map") ||
+    normalized.startsWith("/api/ws/paths") ||
+    normalized.startsWith("/api/ws/dataset") ||
+    normalized.startsWith("/api/ws/control")
+  ) {
+    const piBase = configuredPiApiBaseUrl();
+    if (piBase) {
+      return piBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "");
+    }
+  }
 
   const apiUrl = getApiBaseUrl();
   return apiUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
@@ -33,6 +90,10 @@ export function getWebSocketBaseUrl() {
 
 export function resolveApiEndpoint(endpoint: string) {
   if (/^https?:\/\//.test(endpoint)) return endpoint;
+  const directBase = resolveDirectApiBase(endpoint);
+  if (directBase) {
+    return `${directBase.replace(/\/$/, "")}${endpoint}`;
+  }
   return `${getApiBaseUrl()}${endpoint}`;
 }
 

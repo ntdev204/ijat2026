@@ -50,11 +50,11 @@ std::unique_ptr<rai_planner::Planner> create()
   return std::make_unique<AStarPlanner>();
 }
 
-}  // namespace
+}  
 
 void registerAStarPlanner()
 {
   rai_planner::registerPlanner("A_STAR", create);
 }
 
-}  // namespace rai_planner_a_star
+}  

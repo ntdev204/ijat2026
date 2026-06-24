@@ -221,7 +221,7 @@ std::unique_ptr<ControllerAlgorithm> createCcaNmpcAlgorithm(const ControllerConf
   return std::make_unique<CcaNmpcAlgorithm>(config);
 }
 
-}  // namespace
+}  
 
 class RaiControllerServerNode : public rclcpp::Node
 {
@@ -286,14 +286,14 @@ public:
     local_grid_resolution_ = declare_parameter<double>("local_grid_resolution", 0.05);
     local_grid_width_m_ = declare_parameter<double>("local_grid_width_m", 4.0);
     local_grid_height_m_ = declare_parameter<double>("local_grid_height_m", 4.0);
-    // robot_radius: physical inscribed circle of the robot body (m).
-    // Used as the lethal collision zone in both the global planner and the local LiDAR grid.
+    
+    
     robot_radius_ = declare_parameter<double>("robot_radius", 0.22);
-    // Ensure global planner never plans closer to obstacles than the robot body.
+    
     global_planner_inflation_radius_ = std::max(global_planner_inflation_radius_, robot_radius_);
     obstacle_inflation_radius_ = declare_parameter<double>("obstacle_inflation_radius", 0.22);
     obstacle_inflation_radius_ = std::max(obstacle_inflation_radius_, robot_radius_);
-    // If obstacle_lethal_radius is not explicitly set, default to robot_radius.
+    
     obstacle_lethal_radius_ = declare_parameter<double>("obstacle_lethal_radius", robot_radius_);
     obstacle_lethal_radius_ = std::max(obstacle_lethal_radius_, robot_radius_);
     slowdown_inflation_radius_ = declare_parameter<double>("slowdown_inflation_radius", 0.55);
@@ -1644,7 +1644,7 @@ private:
   std::string global_planner_algorithm_{"A_STAR"};
   int global_path_smoothing_passes_{1};
   double global_planner_inflation_radius_{0.22};
-  double robot_radius_{0.22};              // inscribed radius of robot body (m)
+  double robot_radius_{0.22};              
   double local_grid_resolution_{0.05};
   double local_grid_width_m_{4.0};
   double local_grid_height_m_{4.0};
@@ -1736,7 +1736,7 @@ private:
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
-}  // namespace rai_controller
+}  
 
 int main(int argc, char ** argv)
 {

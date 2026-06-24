@@ -31,7 +31,7 @@ class WebBridgeNode(Node):
         self.odom_topics = ["/odom_combined", "/odom"]
         self.context_input_topics = ["/human_perception/context_input", "/cca_nmpc/context_input"]
 
-        # Telemetry State (Thread-safe)
+        
         self.telemetry = {
             "odom": {
                 "x": 0.0,
@@ -64,13 +64,13 @@ class WebBridgeNode(Node):
             "last_update": 0.0
         }
 
-        # Lazy Subscription counters
+        
         self.active_telemetry_clients = 0
         self.active_camera_clients = 0
         self.active_map_clients = 0
         self.active_paths_clients = 0
 
-        # Subscriptions placeholders
+        
         self.scan_sub = None
         self.odom_subs = []
         self.context_sub = None
@@ -83,12 +83,12 @@ class WebBridgeNode(Node):
         self.plan_sub = None
         self.local_plan_sub = None
 
-        # Thread-safe caches for map and paths
+        
         self.latest_map = None
         self.latest_global_plan = []
         self.latest_local_plan = []
 
-        # QoS Profiles
+        
         self.sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
@@ -106,7 +106,7 @@ class WebBridgeNode(Node):
             depth=1
         )
 
-        # Permanent Publishers/Clients
+        
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.cca_goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.rai_cancel_pub = self.create_publisher(Empty, '/rai_navigation/cancel_topic', 10)
@@ -121,7 +121,7 @@ class WebBridgeNode(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # Camera frame cache (cho WebRTC)
+        
         self.latest_camera_frame = None
         self.camera_frame_event = threading.Event()
         self.current_nav_goal_handle = None
@@ -133,7 +133,7 @@ class WebBridgeNode(Node):
 
         self.get_logger().info("WebBridgeNode initialized.")
 
-    # --- LAZY SUBSCRIPTION MANAGEMENT ---
+    
 
     def ensure_telemetry_subscriptions(self):
         """Ensure realtime telemetry topics are subscribed for REST polling."""
@@ -342,7 +342,7 @@ class WebBridgeNode(Node):
                 "local_path_topic": self.local_path_topic,
             }
 
-    # --- CALLBACKS ---
+    
 
     def map_callback(self, msg: OccupancyGrid):
         """Callback nhận dữ liệu map (OccupancyGrid) và mã hóa base64 dữ liệu grid để lưu trữ/gửi đi"""
@@ -395,7 +395,7 @@ class WebBridgeNode(Node):
         with self.lock:
             v = msg.data
             self.telemetry["battery"]["voltage"] = round(v, 2)
-            # 24V Battery / 6S LiPo calculation (20.0V -> 25.2V)
+            
             if v <= 20.0:
                 pct = 0.0
             elif v >= 25.2:
@@ -411,16 +411,16 @@ class WebBridgeNode(Node):
     def odom_callback(self, msg: Odometry):
         """Callback nhận odom và tính toán toạ độ Pose"""
         with self.lock:
-            # Extract position
+            
             self.telemetry["odom"]["x"] = round(msg.pose.pose.position.x, 3)
             self.telemetry["odom"]["y"] = round(msg.pose.pose.position.y, 3)
-            # Euler yaw from quaternion
+            
             q = msg.pose.pose.orientation
             siny_cosp = 2 * (q.w * q.z + q.x * q.y)
             cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
             self.telemetry["odom"]["theta"] = round(math.atan2(siny_cosp, cosy_cosp), 3)
 
-            # Velocities
+            
             self.telemetry["odom"]["linear_x"] = round(msg.twist.twist.linear.x, 3)
             self.telemetry["odom"]["linear_y"] = round(msg.twist.twist.linear.y, 3)
             self.telemetry["odom"]["angular_z"] = round(msg.twist.twist.angular.z, 3)
@@ -433,7 +433,7 @@ class WebBridgeNode(Node):
         if num_rays == 0:
             return
 
-        # Lấy tia ở góc 90 độ (trái) và -90 độ (phải)
+        
         idx_left = int((1.57 - msg.angle_min) / msg.angle_increment)
         idx_right = int((-1.57 - msg.angle_min) / msg.angle_increment)
 
@@ -507,7 +507,7 @@ class WebBridgeNode(Node):
         with self.lock:
             self.latest_camera_frame = msg
             self.camera_frame_event.set()
-        # No lock needed for event set – it is thread‑safe.
+        
 
     def update_map_pose(self):
         try:
@@ -548,7 +548,7 @@ class WebBridgeNode(Node):
         self.send_cca_nmpc_goal(pending["x"], pending["y"], pending.get("yaw", 0.0))
 
 
-    # --- ACTIONS & COMMANDS ---
+    
 
     def publish_cmd_vel(self, vx: float, vy: float, wz: float):
         """Gửi lệnh điều khiển xe (Twist)"""

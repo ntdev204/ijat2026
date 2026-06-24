@@ -99,7 +99,7 @@ std::vector<ControlSample> makeGridSamples(
   return samples;
 }
 
-}  // namespace
+}  
 
 double normalizeAngle(double angle)
 {
@@ -346,8 +346,8 @@ double CcanmpcCore::adaptiveVelocityConstraintPenalty(
     return 0.0;
   }
 
-  // Adaptive velocity constraints:
-  // |v_x| <= v_x,max(phi_h), |v_y| <= v_y,max(phi_h), |omega| <= omega_max(phi_h)
+  
+  
   return params_.w_slack * (
     vx_violation * vx_violation +
     vy_violation * vy_violation +
@@ -664,4 +664,4 @@ SolveResult CcanmpcCore::solve(
   return result;
 }
 
-}  // namespace rai_controller_cca_nmpc
+}  

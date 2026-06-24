@@ -1,22 +1,22 @@
-# Requirements:
-#   Install Turtlebot3 packages
-#   Note that we can edit turtlebot3_gazebo/models/turtlebot_waffle/model.sdf 
-#     to increase min scan range from 0.12 to 0.2 to avoid having scans 
-#     hitting the robot itself
-# Example:
-#   $ export TURTLEBOT3_MODEL=waffle
-#   $ ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
-#
-#   SLAM:
-#   $ ros2 launch rtabmap_ros turtlebot3_scan.launch.py
-#   OR
-#   $ ros2 launch rtabmap_ros rtabmap.launch.py visual_odometry:=false frame_id:=base_footprint subscribe_scan:=true depth:=false approx_sync:=true odom_topic:=/odom args:="-d --RGBD/NeighborLinkRefining true --Reg/Strategy 1 --Reg/Force3DoF true --Grid/RangeMin 0.2" use_sim_time:=true
-#
-#   Navigation:
-#     Launch the native `rai_navigation` runtime if goal-driven map navigation is needed.
-#
-#   Teleop:
-#     $ ros2 run turtlebot3_teleop teleop_keyboard
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
@@ -43,8 +43,8 @@ def generate_launch_description():
           'Reg/Strategy':'1',
           'Reg/Force3DoF':'true',
           'RGBD/NeighborLinkRefining':'True',
-          'Grid/RangeMin':'0.2', # ignore laser scan points on the robot itself
-          'Optimizer/GravitySigma':'0' # Disable imu constraints (we are already in 2D)
+          'Grid/RangeMin':'0.2', 
+          'Optimizer/GravitySigma':'0' 
     }
  
     remappings=[
@@ -57,7 +57,7 @@ def generate_launch_description():
 
     return LaunchDescription([
 
-        # Launch arguments
+        
         DeclareLaunchArgument(
             'use_sim_time', default_value='false',
             description='Use simulation (Gazebo) clock if true'),
@@ -70,17 +70,17 @@ def generate_launch_description():
             'localization', default_value='false',
             description='Launch in localization mode.'),
 
-        # Nodes to launch
         
-        # SLAM mode:
+        
+        
         Node(
             condition=UnlessCondition(localization),
             package='rtabmap_ros', executable='rtabmap', output='screen',
             parameters=[parameters],
             remappings=remappings,
-            arguments=['-d']), # This will delete the previous database (~/.ros/rtabmap.db)
+            arguments=['-d']), 
             
-        # Localization mode:
+        
         Node(
             condition=IfCondition(localization),
             package='rtabmap_ros', executable='rtabmap', output='screen',

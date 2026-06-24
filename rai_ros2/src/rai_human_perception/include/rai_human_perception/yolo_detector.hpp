@@ -48,6 +48,6 @@ private:
   bool initialized_{false};
 };
 
-}  // namespace rai_human_perception
+}  
 
-#endif  // RAI_HUMAN_PERCEPTION__YOLO_DETECTOR_HPP_
+#endif  

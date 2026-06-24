@@ -70,7 +70,7 @@ rai_controller::msg::HumanState toControllerMsg(const HumanTrack & track)
   return msg;
 }
 
-}  // namespace
+}  
 
 class PerceptionNode : public rclcpp::Node
 {
@@ -422,7 +422,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr debug_latency_pub_;
 };
 
-}  // namespace rai_human_perception
+}  
 
 int main(int argc, char ** argv)
 {

@@ -173,7 +173,7 @@ class ContextMonitor(Node):
             vx_h = (x_h - previous['x']) / dt
             vy_h = (y_h - previous['y']) / dt
 
-        # Clamp because this heuristic uses depth-only pseudo detections.
+        
         speed = math.hypot(vx_h, vy_h)
         if speed > 1.8:
             scale = 1.8 / speed
@@ -221,7 +221,7 @@ class ContextMonitor(Node):
         if valid.size == 0:
             return None
 
-        # Lower percentile approximates nearest person/obstacle in the central ROI.
+        
         return float(np.percentile(valid, 10))
 
     def _current_human_distance(self) -> float:

@@ -5,9 +5,11 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { Loader2 } from "lucide-react";
 import { GlobalKeyboardTeleop } from "@/components/control/GlobalKeyboardTeleop";
+import { useState } from "react";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -27,10 +29,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh bg-slate-50 overflow-hidden">
       <GlobalKeyboardTeleop />
-      <Sidebar />
+      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar />
-        <main className="flex-1 overflow-auto px-4 py-4 pb-24 sm:p-6">
+        <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
+        <main className="flex-1 overflow-auto px-4 py-4 sm:p-6">
           {children}
         </main>
       </div>

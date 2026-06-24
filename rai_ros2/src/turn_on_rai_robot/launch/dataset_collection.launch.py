@@ -30,18 +30,18 @@ def generate_launch_description():
     5. NO Navigation/SLAM (not needed for data collection)
     """
 
-    # Package directories
+    
     rai_launch_dir = get_package_share_directory('turn_on_rai_robot')
     rai_slam_dir = get_package_share_directory('rai_slam_toolbox')
 
-    # Launch arguments
+    
     dataset_mode_arg = DeclareLaunchArgument(
         'dataset_mode',
         default_value='collection',
         description='Dataset collection mode: collection | validation'
     )
 
-    # Cleanup: Kill existing ROS2 processes before dataset bringup
+    
     cleanup_processes = ExecuteProcess(
         cmd=['bash', '-c',
              'echo "[dataset_collection] Cleaning up existing processes..."; '
@@ -58,12 +58,12 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Log start message
+    
     log_start = LogInfo(
         msg='[dataset_collection] Starting hardware layer for CCA-NMPC dataset collection...'
     )
 
-    # 1. Base hardware layer
+    
     hardware_layer = TimerAction(
         period=3.0,
         actions=[
@@ -77,7 +77,7 @@ def generate_launch_description():
         ]
     )
 
-    # 2. LiDAR
+    
     lidar_node = TimerAction(
         period=5.0,
         actions=[
@@ -91,7 +91,7 @@ def generate_launch_description():
         ]
     )
 
-    # 3. LiDAR scan filter
+    
     lidar_filter = TimerAction(
         period=7.0,
         actions=[
@@ -112,9 +112,9 @@ def generate_launch_description():
         ]
     )
 
-    # 4. RGB-D Camera (Astra Camera)
-    # Provides RGB + Depth for YOLO human detection
-    # Topics: /camera/color/image_raw, /camera/depth/image_raw
+    
+    
+    
     camera_node = TimerAction(
         period=6.0,
         actions=[
@@ -130,8 +130,8 @@ def generate_launch_description():
         ]
     )
 
-    # 5. Static TF: Camera → Base Link
-    # Camera mounted at (0.15, 0.0, 0.25) with 6° depression angle
+    
+    
     camera_tf = TimerAction(
         period=7.0,
         actions=[
@@ -141,8 +141,8 @@ def generate_launch_description():
                 executable='static_transform_publisher',
                 name='camera_base_tf',
                 arguments=[
-                    '0.15', '0.0', '0.25',  # x, y, z (meters)
-                    '0.0', '0.105', '0.0',   # roll, pitch(6°), yaw (radians)
+                    '0.15', '0.0', '0.25',  
+                    '0.0', '0.105', '0.0',   
                     'base_link',
                     'camera_link'
                 ],
@@ -151,7 +151,7 @@ def generate_launch_description():
         ]
     )
 
-    # 6. Completion Log
+    
     complete_log = TimerAction(
         period=10.0,
         actions=[
@@ -164,30 +164,30 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # Arguments
+        
         dataset_mode_arg,
 
-        # Log
+        
         log_start,
 
-        # 0. Cleanup
+        
         cleanup_processes,
 
-        # 1. Hardware layer (chassis, motors, lidar, imu, encoders)
+        
         hardware_layer,
 
-        # 2. LiDAR
+        
         lidar_node,
 
-        # 3. LiDAR filter
+        
         lidar_filter,
 
-        # 4. RGB-D camera
+        
         camera_node,
 
-        # 5. Camera TF
+        
         camera_tf,
 
-        # 6. Completion message
+        
         complete_log,
     ])

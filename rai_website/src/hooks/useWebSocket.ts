@@ -42,7 +42,8 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
           return;
         }
 
-        const url = new URL(`${getWebSocketBaseUrl()}${resolveWebSocketPath(path)}`);
+        const resolvedPath = resolveWebSocketPath(path);
+        const url = new URL(`${getWebSocketBaseUrl(resolvedPath)}${resolvedPath}`);
         const ws = new WebSocket(url.toString());
         ws.binaryType = binaryType;
         wsRef.current = ws;

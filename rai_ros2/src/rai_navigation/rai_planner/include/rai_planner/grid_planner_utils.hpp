@@ -41,6 +41,6 @@ nav_msgs::msg::Path makeStraightPath(
   const PlannerConfig & config,
   const rclcpp::Time & stamp);
 
-}  // namespace rai_planner
+}  
 
-#endif  // RAI_PLANNER__GRID_PLANNER_UTILS_HPP_
+#endif  

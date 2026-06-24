@@ -116,4 +116,4 @@ PredictedHumanContext HumanPredictor::predictHumanContext(
   return aggregated;
 }
 
-}  // namespace rai_controller_cca_nmpc
+}  

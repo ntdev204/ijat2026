@@ -185,7 +185,7 @@ def sync_run_topics(run_dir):
     df_sync["run_id"] = run_id
     df_sync["controller_id"] = controller_id
     
-    # Merge Laser Scan Clearance if exists
+    
     scan_file = run_dir / "scan.parquet"
     if scan_file.exists():
         df_scan = pd.read_parquet(scan_file).sort_values("timestamp")
@@ -199,7 +199,7 @@ def sync_run_topics(run_dir):
     else:
         df_sync["min_costmap_clearance"] = np.nan
 
-    # Calculate command jerk (derivative of acceleration)
+    
     dt = df_sync["timestamp"].diff()
     dt_clamped = dt.where(dt > 1e-5, np.nan)
     
