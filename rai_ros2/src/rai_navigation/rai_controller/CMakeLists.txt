@@ -51,6 +51,7 @@ add_library(rai_controller_core
 ament_target_dependencies(rai_controller_core
   geometry_msgs
   nav_msgs
+  rai_controller_cca_nmpc
   rclcpp
 )
 

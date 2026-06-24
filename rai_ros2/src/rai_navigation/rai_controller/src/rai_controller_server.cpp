@@ -51,6 +51,12 @@ using namespace std::chrono_literals;
 
 namespace rai_controller
 {
+
+using HumanState = ControllerHumanState;
+using CcanmpcParameters = ControllerConfig;
+using ContextState = ControllerContext;
+using SolveResult = ControllerResult;
+
 namespace
 {
 

@@ -45,12 +45,18 @@ from rai_dataset_collection.research_dataset_spec import (
 logger = logging.getLogger("rai_web_api")
 logging.basicConfig(level=os.getenv("RAI_API_LOG_LEVEL", "INFO"))
 
-DATASET_BASE_PATH = Path(os.getenv("RAI_DATASET_PATH", "/home/rai/ijat2026/dataset")).expanduser()
-DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
+HOME_DIR = Path.home()
+DEFAULT_WORKSPACE_DIR = HOME_DIR / "ijat2026"
+DEFAULT_RAI_ROS2_DATA_DIR = DEFAULT_WORKSPACE_DIR / "rai_ros2" / "data"
+
+DATASET_BASE_PATH = Path(
+    os.getenv("RAI_DATASET_PATH", str(DEFAULT_WORKSPACE_DIR / "dataset"))
+).expanduser()
+DEFAULT_HOST = os.getenv("RAI_API_HOST", "100.116.199.115")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
-DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", "100.77.136.102").strip()
+DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", "100.116.199.115").strip()
 IS_HUB_ROLE = DEVICE_ROLE in {"hub", "laptop"}
 try:
     Path(get_package_share_directory("rai_web_api")).resolve()
@@ -64,6 +70,7 @@ def _cors_origins() -> list[str]:
         return [origin.strip() for origin in configured.split(",") if origin.strip()]
     default_origins = [
         f"http://{DEFAULT_LAN_HOST}:3000",
+        f"http://{DEFAULT_LAN_HOST}",
         "http://localhost:3000",
     ]
     return default_origins
@@ -199,7 +206,7 @@ if default_local_planner not in {item["id"] for item in RAI_CONTROLLER_OPTIONS}:
 rai_navigation_runtime_config = {
     "local_planner": default_local_planner,
     "global_planner": os.getenv("RAI_NAVIGATION_GLOBAL_PLANNER", "A_STAR").upper(),
-    "map_path": os.getenv("RAI_NAVIGATION_MAP", "/home/rai/rai_ros2/data/map/RAI.yaml"),
+    "map_path": os.getenv("RAI_NAVIGATION_MAP", str(DEFAULT_RAI_ROS2_DATA_DIR / "map" / "RAI.yaml")),
     "selected_map_id": None,
     "params_path": os.getenv("RAI_NAVIGATION_PARAMS", ""),
     "last_command": None,
@@ -218,8 +225,12 @@ if system_operation_mode not in {"real", "sim", "hybrid"}:
     system_operation_mode = "real"
 camera_depth_enabled = os.getenv("RAI_CAMERA_ENABLE_DEPTH", "false").strip().lower() == "true"
 
-MAP_STORAGE_DIR = Path(os.getenv("RAI_MAP_STORAGE_DIR", "/home/rai/rai_ros2/data/map")).expanduser()
-WORLD_STORAGE_DIR = Path(os.getenv("RAI_WORLD_STORAGE_DIR", "/home/rai/rai_ros2/data/worlds")).expanduser()
+MAP_STORAGE_DIR = Path(
+    os.getenv("RAI_MAP_STORAGE_DIR", str(DEFAULT_RAI_ROS2_DATA_DIR / "map"))
+).expanduser()
+WORLD_STORAGE_DIR = Path(
+    os.getenv("RAI_WORLD_STORAGE_DIR", str(DEFAULT_RAI_ROS2_DATA_DIR / "worlds"))
+).expanduser()
 RUNTIME_SETTING_OPERATION_MODE = "system.operation_mode"
 RUNTIME_SETTING_CAMERA_DEPTH = "system.camera.enable_depth"
 
@@ -366,7 +377,7 @@ def _default_rai_navigation_params_path() -> Path:
 
 
 def _default_rai_navigation_map_path() -> Path:
-    return Path("/home/rai/rai_ros2/data/map/RAI.yaml")
+    return DEFAULT_RAI_ROS2_DATA_DIR / "map" / "RAI.yaml"
 
 
 def _rai_robot_urdf_share() -> Path:
@@ -2919,7 +2930,7 @@ def _run_pipeline_command(command: list[str]) -> dict:
     try:
         completed = subprocess.run(
             command,
-            cwd="/home/rai/ijat2026",
+            cwd=str(DEFAULT_WORKSPACE_DIR),
             text=True,
             capture_output=True,
             timeout=600,

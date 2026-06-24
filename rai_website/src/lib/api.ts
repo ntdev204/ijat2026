@@ -1,5 +1,5 @@
 const DEFAULT_ROBOT_API_PORT = "8080";
-const DEFAULT_LAN_HOST = "100.77.136.102";
+const DEFAULT_LAN_HOST = "100.116.199.115";
 
 function configuredApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_URL?.trim();
