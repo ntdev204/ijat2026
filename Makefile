@@ -1,6 +1,7 @@
 COMPOSE_FILE := docker-compose.yml
 PROJECT_NAME := rai-jetson
-COMPOSE := docker compose -p $(PROJECT_NAME) -f $(COMPOSE_FILE)
+DOCKER_COMPOSE ?= docker compose
+COMPOSE := $(DOCKER_COMPOSE) -f $(COMPOSE_FILE) -p $(PROJECT_NAME)
 
 .PHONY: db-up db-down db-logs db-shell db-ps db-restart
 
