@@ -14,7 +14,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER:-robot_admin} -d ${POSTGRES_DB:-rai_website}",
+          "pg_isready -h 100.116.199.115 -p 5432 -U ${POSTGRES_USER:-robot_admin} -d ${POSTGRES_DB:-rai_website}",
         ]
       interval: 5s
       timeout: 5s

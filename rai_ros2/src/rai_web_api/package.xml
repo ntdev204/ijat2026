@@ -19,6 +19,8 @@
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <exec_depend>python3-sqlalchemy</exec_depend>
+  <exec_depend>python3-asyncpg</exec_depend>
+  <exec_depend>python3-aiosqlite</exec_depend>
   <exec_depend>python3-aiortc</exec_depend>
   <exec_depend>python3-av</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
