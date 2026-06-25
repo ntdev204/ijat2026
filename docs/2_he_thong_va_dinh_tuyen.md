@@ -1,129 +1,150 @@
 # 2. Hệ thống và Định tuyến Thiết bị (Device Runtime & Routing)
 
-Tài liệu này định nghĩa vai trò thiết bị, cách khởi chạy hệ thống trên **Raspberry Pi 4** và **Jetson Orin Nano**, các bộ điều khiển được đăng ký hỗ trợ, và luồng định tuyến lệnh vận tốc thông qua `twist_mux`.
+Tài liệu này chuẩn hóa cấu hình mạng hiện tại của hệ thống:
+
+- **Server / Hub**: `100.116.199.115`
+- **Raspberry Pi 4**: `100.120.77.81` hoặc `25.12.4.101`
+- **Jetson Orin Nano**: `100.69.39.18` hoặc `25.12.4.100`
+
+Server là điểm vào chính cho `rai_website` và `rai_web_api` dạng hub. Pi vẫn là nơi chạy runtime robot, SLAM, navigation và dataset. Jetson vẫn là nơi chạy camera/perception.
 
 ---
 
-## 1. Phân vai Thiết bị (Device Roles)
+## 1. Vai trò thiết bị
 
-Hệ thống được thiết kế theo source tree chung nhưng phân chia chức năng chạy thực tế giữa hai máy tính nhúng:
+### Raspberry Pi 4
 
-* **Raspberry Pi 4 (Pi)**:
-  * Trình điều khiển phần cứng (base driver).
-  * Thu nhận dữ liệu cảm biến Lidar và IMU gốc.
-  * Chạy Odometry, bộ lọc EKF, phát hành TF.
-  * Chạy `rai_map_server`, định vị và các dịch vụ runtime cho `rai_navigation`.
-  * Chạy node hợp nhất lệnh vận tốc `twist_mux`.
-  * Chạy `rai_web_api` và quản lý việc ghi rosbag (dataset recording).
+- Driver phần cứng base.
+- LiDAR, IMU, odometry, EKF, TF.
+- `twist_mux`.
+- `rai_web_api` local cho robot runtime.
+- SLAM, navigation, map server, dataset recording.
 
-* **Jetson Orin Nano (Jetson)**:
-  * Chạy mô hình camera RGB-D và YOLO26m (`best.pt`) phát hiện người.
-  * Bộ ước lượng vết người tuyến tính (`KalmanTracker`).
-  * Chạy bộ điều khiển tối ưu hóa chính `rai_controller_cca_nmpc` và bộ dự báo người `HumanPredictor`.
+### Jetson Orin Nano
 
----
+- Camera / RGB-D processing.
+- `rai_human_perception`.
+- YOLO + TensorRT + Kalman tracking.
+- `rai_web_api` local cho camera/perception.
 
-## 2. Bản đồ Mạng và Địa chỉ IP tham chiếu
+### Server / Hub
 
-* **Raspberry Pi 4**: `100.120.77.81` (mạng chung) hoặc `25.12.4.101` (mạng nội bộ).
-* **Jetson Orin Nano**: `100.69.39.18` (mạng chung) hoặc `25.12.4.100` (mạng nội bộ).
-* **Laptop người dùng**: `100.77.136.102` (Tailscale).
-
-*Quy ước kết nối*: 
-* `rai_website` và một instance `rai_web_api` dạng **hub** chạy trên laptop tại `http://100.77.136.102:3000` và `http://100.77.136.102:8080`.
-* Pi vẫn là đích chính cho runtime robot, SLAM, navigation, map, dataset tại `http://100.120.77.81:8080`.
-* Jetson vẫn là đích chính cho camera/perception tại `http://100.69.39.18:8080`.
-* Đường Ethernet nội bộ (`25.12.4.10x`) dùng cho ROS 2 tốc độ cao và API peer-to-peer giữa Pi và Jetson.
+- `rai_web_api` ở vai trò `hub`.
+- `rai_website` ở cổng `3000`.
+- PostgreSQL cho metadata dataset.
+- RViz / teleop / tooling nếu cần.
 
 ---
 
-## 3. Các bộ điều khiển được đăng ký trên hệ thống
+## 2. Định tuyến mạng
 
-Mã nguồn đăng ký các bộ điều khiển cho hai mục đích so sánh chính:
+- Website người dùng truy cập: `http://100.116.199.115:3000`
+- Hub API: `http://100.116.199.115:8080`
+- Pi API: `http://100.120.77.81:8080`
+- Jetson API: `http://100.69.39.18:8080`
 
-### 3.1 Bộ điều khiển so sánh chuẩn (Benchmark Controllers)
-* **`CCA_NMPC`**: Thuật toán đề xuất với predictive continuous context adaptation đầy đủ.
-* **`NMPC`**: Bộ điều khiển NMPC danh nghĩa cho xe Mecanum, không thích ứng ngữ cảnh.
-
-Các bộ điều khiển dựa trên Nav2 như `DWA`, `DWB`, `TEB`, `MPPI` đã được gỡ khỏi workspace để tránh xung đột kiến trúc với `rai_navigation`.
-
-### 3.2 Chuẩn tần số runtime
-Toàn bộ pipeline benchmark được đồng bộ về cùng một nhịp thời gian để tránh xung đột giữa bộ điều khiển, perception và logging:
-* **Control cycle**: `25 Hz`
-* **CCA-NMPC sample time**: `T_s = 0.04 s`
-* **EKF / odometry fusion**: `25 Hz`
-* **RGB-D camera publish rate**: `25 Hz`
-* **TF publish rate**: `25 Hz`
-* **Planner expectation**: `25 Hz`
+Đường Ethernet nội bộ `25.12.4.10x` được dùng cho ROS 2 tốc độ cao giữa Pi và Jetson. Hub không cần nằm trên cùng Ethernet nội bộ, nhưng phải truy cập được HTTP tới Pi và Jetson.
 
 ---
 
-## 4. Quy trình Khởi chạy Hệ thống (Bringup)
+## 3. ROS 2 network chuẩn
 
-### 4.1 Khởi động phía Raspberry Pi 4 (Thiết bị Pi)
-Khởi động web runtime trên Pi. Theo kiến trúc mới, robot có thể đã bật nguồn nhưng **không tự chạy launch/node phần cứng**. Pi chỉ dựng `rai_web_api` để website điều khiển các thành phần độc lập:
+Tất cả thiết bị phải dùng cùng cấu hình DDS:
+
+```bash
+export ROS_DOMAIN_ID=30
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_LOCALHOST_ONLY=0
+```
+
+Nếu một máy đặt `ROS_LOCALHOST_ONLY=1` thì nó sẽ không giao tiếp DDS với robot.
+
+---
+
+## 4. Bringup theo thiết bị
+
+### 4.1 Raspberry Pi 4
+
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/rai_ros2/install/setup.bash
+
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_LOCALHOST_ONLY=0
 export RAI_DEVICE_ROLE=pi
 export RAI_DEVICE_LABEL=raspberry_pi_4
 export RAI_JETSON_API_URL=http://25.12.4.100:8080
 
-# Chỉ khởi chạy web/runtime stack
 ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 port:=8080
 ```
 
-Sau khi API lên, toàn bộ thao tác bật/tắt:
-* Robot base: `turn_on_rai_robot.launch.py`
-* LiDAR: `rai_lidar.launch.py`
-* Camera: `rai_camera.launch.py`
+Sau khi Pi API lên:
 
-được thực hiện từ trang `System` trên `rai_website`, không cần chạy tay trong terminal.
+- `turn_on_rai_robot.launch.py`
+- `rai_lidar.launch.py`
+- `rai_camera.launch.py`
 
-### 4.2 Khởi động phía Jetson Orin Nano (Thiết bị Jetson)
-Jetson cũng chỉ dựng `rai_web_api` cục bộ để nhận lệnh điều khiển camera/perception từ website hoặc từ Pi thông qua proxy nội bộ:
+có thể được bật từ trang `System` trên website.
+
+### 4.2 Jetson Orin Nano
+
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/rai_ros2/install/setup.bash
+
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_LOCALHOST_ONLY=0
 export RAI_DEVICE_ROLE=jetson
 export RAI_DEVICE_LABEL=jetson_orin_nano
 export RAI_PI_API_URL=http://25.12.4.101:8080
 
-# Khởi chạy web/API control surface trên Jetson
 ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 port:=8080
+```
 
-### 4.3 Khởi động phía Laptop (Hub + Website)
-Laptop dựng `rai_web_api` ở chế độ `hub` để gom trạng thái hệ thống và làm điểm vào chính cho website:
+### 4.3 Server / Hub
+
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/rai_ros2/install/setup.bash
+source ~/ijat2026/rai_ros2/install/setup.bash
+
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_LOCALHOST_ONLY=0
 export RAI_DEVICE_ROLE=hub
-export RAI_DEVICE_LABEL=laptop_hub
+export RAI_DEVICE_LABEL=ubuntu_server_hub
 export RAI_PI_API_URL=http://100.120.77.81:8080
 export RAI_JETSON_API_URL=http://100.69.39.18:8080
+
 ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 port:=8080
 ```
 
-`rai_website` trên laptop dùng:
+Website trên server dùng:
+
 ```bash
-NEXT_PUBLIC_API_URL=http://100.77.136.102:8080
+NEXT_PUBLIC_API_URL=http://100.116.199.115:8080
 NEXT_PUBLIC_PI_API_URL=http://100.120.77.81:8080
 NEXT_PUBLIC_JETSON_API_URL=http://100.69.39.18:8080
-```
 ```
 
 ---
 
-## 5. Định tuyến Lệnh vận tốc qua `twist_mux`
+## 5. Định tuyến lệnh vận tốc
 
-Để đảm bảo robot không bị xung đột lệnh vận tốc giữa các nguồn điều khiển khác nhau:
+- `/cmd_vel_web`: teleop từ web, ưu tiên cao nhất.
+- `/cca_nmpc/cmd_vel`: lệnh điều khiển tự động.
+- `twist_mux` xuất `/cmd_vel`: lệnh cuối cùng đi xuống base driver.
 
-* **`/cmd_vel_web` (độ ưu tiên cao)**: Lệnh lái thủ công từ Web Dashboard (teleop).
-* **`/cca_nmpc/cmd_vel` (độ ưu tiên trung bình)**: Lệnh vận tốc tự động tính từ thuật toán CCA-NMPC trên Jetson.
-* **`/cmd_vel`**: Lệnh vận tốc đầu ra duy nhất sau khi mux chọn lọc để truyền trực tiếp xuống bộ điều khiển động cơ base driver.
+---
+
+## 6. Thứ tự khởi động khuyến nghị
+
+1. Server: PostgreSQL.
+2. Server: `rai_web_api` hub.
+3. Server: `rai_website`.
+4. Jetson: `rai_web_api`.
+5. Pi: `rai_web_api`.
+6. Từ website: bật robot base, LiDAR, camera, perception, SLAM hoặc navigation.
+
+Hướng dẫn thao tác chi tiết xem tại `docs/device_launch_guide.md`.
