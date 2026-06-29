@@ -15,7 +15,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core dnn imgproc video)
-find_package(CUDAToolkit REQUIRED)
+find_package(CUDAToolkit)
 find_package(rai_controller REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -52,8 +52,11 @@ target_include_directories(${PROJECT_NAME}_core PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>"
   ${OpenCV_INCLUDE_DIRS}
-  ${CUDAToolkit_INCLUDE_DIRS}
 )
+if(CUDAToolkit_FOUND)
+  target_include_directories(${PROJECT_NAME}_core PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+  target_compile_definitions(${PROJECT_NAME}_core PUBLIC RAI_HUMAN_PERCEPTION_HAS_CUDA=1)
+endif()
 ament_target_dependencies(${PROJECT_NAME}_core
   cv_bridge
   geometry_msgs
@@ -69,8 +72,10 @@ ament_target_dependencies(${PROJECT_NAME}_core
 target_link_libraries(${PROJECT_NAME}_core
   ${OpenCV_LIBRARIES}
   "${cpp_typesupport_target}"
-  CUDA::cudart
 )
+if(CUDAToolkit_FOUND)
+  target_link_libraries(${PROJECT_NAME}_core CUDA::cudart)
+endif()
 if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY)
   target_compile_definitions(${PROJECT_NAME}_core PUBLIC RAI_HUMAN_PERCEPTION_HAS_TENSORRT=1)
   target_include_directories(${PROJECT_NAME}_core PUBLIC ${TENSORRT_INCLUDE_DIR})
