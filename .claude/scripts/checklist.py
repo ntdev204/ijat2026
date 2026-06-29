@@ -24,7 +24,7 @@ import sys
 import subprocess
 import argparse
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 # ANSI colors for terminal output
 class Colors:
@@ -56,22 +56,33 @@ def print_error(text: str):
 
 # Define priority-ordered checks
 CORE_CHECKS = [
-    ("Security Scan", ".agents/skills/vulnerability-scanner/scripts/security_scan.py", True),
-    ("Lint Check", ".agents/skills/lint-and-validate/scripts/lint_runner.py", True),
-    ("Schema Validation", ".agents/skills/database-design/scripts/schema_validator.py", False),
-    ("Test Runner", ".agents/skills/testing-patterns/scripts/test_runner.py", False),
-    ("UX Audit", ".agents/skills/frontend-design/scripts/ux_audit.py", False),
-    ("SEO Check", ".agents/skills/seo-fundamentals/scripts/seo_checker.py", False),
+    ("Security Scan", ".claude/skills/vulnerability-scanner/scripts/security_scan.py", True),
+    ("Lint Check", ".claude/skills/lint-and-validate/scripts/lint_runner.py", True),
+    ("Schema Validation", ".claude/skills/database-design/scripts/schema_validator.py", False),
+    ("Test Runner", ".claude/skills/testing-patterns/scripts/test_runner.py", False),
+    ("UX Audit", ".claude/skills/frontend-design/scripts/ux_audit.py", False),
+    ("SEO Check", ".claude/skills/seo-fundamentals/scripts/seo_checker.py", False),
 ]
 
 PERFORMANCE_CHECKS = [
-    ("Lighthouse Audit", ".agents/skills/performance-profiling/scripts/lighthouse_audit.py", True),
-    ("Playwright E2E", ".agents/skills/webapp-testing/scripts/playwright_runner.py", False),
+    ("Lighthouse Audit", ".claude/skills/performance-profiling/scripts/lighthouse_audit.py", True),
+    ("Playwright E2E", ".claude/skills/webapp-testing/scripts/playwright_runner.py", False),
 ]
 
 def check_script_exists(script_path: Path) -> bool:
     """Check if script file exists"""
     return script_path.exists() and script_path.is_file()
+
+
+def resolve_script_path(project_path: Path, script_path: str) -> Path:
+    configured_path = Path(script_path)
+    candidate = project_path / configured_path
+    if candidate.exists():
+        return candidate
+
+    legacy_candidate = project_path / Path(str(configured_path).replace(".claude", ".agents", 1))
+    return legacy_candidate
+
 
 def run_script(name: str, script_path: Path, project_path: str, url: Optional[str] = None) -> dict:
     """
@@ -184,17 +195,13 @@ Examples:
     print_header("🚀 ANTIGRAVITY KIT - MASTER CHECKLIST")
     print(f"Project: {project_path}")
     print(f"URL: {args.url if args.url else 'Not provided (performance checks skipped)'}")
-    
-    # Detect agent directory dynamically (default to .agents if exists, fallback to .agent)
-    agent_dir_name = ".agents" if (project_path / ".agents").exists() else ".agents"
-    
+
     results = []
-    
+
     # Run core checks
     print_header("📋 CORE CHECKS")
     for name, script_path, required in CORE_CHECKS:
-        actual_script_path = Path(script_path.replace(".agents", agent_dir_name))
-        script = project_path / actual_script_path
+        script = resolve_script_path(project_path, script_path)
         result = run_script(name, script, str(project_path))
         results.append(result)
         
@@ -208,8 +215,7 @@ Examples:
     if args.url and not args.skip_performance:
         print_header("⚡ PERFORMANCE CHECKS")
         for name, script_path, required in PERFORMANCE_CHECKS:
-            actual_script_path = Path(script_path.replace(".agents", agent_dir_name))
-            script = project_path / actual_script_path
+            script = resolve_script_path(project_path, script_path)
             result = run_script(name, script, str(project_path), args.url)
             results.append(result)
     

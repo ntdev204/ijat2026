@@ -21,7 +21,7 @@ The Memory System provides **persistent, searchable memory** that survives acros
 ## Architecture
 
 ```
-.agents/memory/
+.claude/memory/
 ├── MEMORY.md              ← Lightweight index (max 200 lines)
 ├── user-preferences.md    ← Topic file: user role, style, tools
 ├── project-conventions.md ← Topic file: coding standards, patterns
@@ -132,14 +132,14 @@ updated: 2026-04-01
 
 ### Recall (Trigger: session start, or "what do you remember about X")
 
-1. Read `.agents/memory/MEMORY.md` index
+1. Read `.claude/memory/MEMORY.md` index
 2. Scan for relevant entries matching the current task
 3. If match found → read the referenced topic file
 4. Apply recalled context silently (don't recite memories unless asked)
 
 ### Search (Trigger: "do I have any notes about X")
 
-1. Grep across `.agents/memory/*.md` for the search term
+1. Grep across `.claude/memory/*.md` for the search term
 2. Return matching entries with file references
 3. Offer to read full topic file if user wants details
 
@@ -157,7 +157,7 @@ updated: 2026-04-01
 At the start of every session:
 
 ```
-1. Check: Does `.agents/memory/MEMORY.md` exist?
+1. Check: Does `.claude/memory/MEMORY.md` exist?
    → YES: Read index. Apply relevant context silently.
    → NO: Continue without memory. Create on first "remember" trigger.
 
@@ -174,7 +174,7 @@ At the start of every session:
 
 | Artifact | Purpose | Lifespan | Location |
 |----------|---------|----------|----------|
-| **Memory** | Cross-session knowledge | Permanent until pruned | `.agents/memory/` |
+| **Memory** | Cross-session knowledge | Permanent until pruned | `.claude/memory/` |
 | **Plan** | Task breakdown for current project | Until project complete | Project root |
 | **Task** | Progress tracker for current session | Until session ends | Artifact directory |
 

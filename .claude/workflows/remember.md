@@ -10,7 +10,7 @@ $ARGUMENTS
 
 ## 🔴 CRITICAL RULES
 
-1. **Load memory-system skill** — Read `.agents/skills/memory-system/SKILL.md` first
+1. **Load memory-system skill** — Read `.claude/skills/memory-system/SKILL.md` first
 2. **Never auto-delete memories** — Always ask user before pruning
 3. **Keep index under 200 lines** — Warn if approaching limit
 4. **Distill, don't copy** — Save insights, not full conversations
@@ -24,13 +24,13 @@ Use the `memory-system` skill to save information:
 ```
 CONTEXT:
 - User wants to remember: $ARGUMENTS
-- Memory location: .agents/memory/
+- Memory location: .claude/memory/
 
 WORKFLOW:
 1. CLASSIFY the information type: user | feedback | project | reference
-2. CHECK if relevant topic file exists in .agents/memory/
+2. CHECK if relevant topic file exists in .claude/memory/
 3. SAVE to appropriate topic file (create if needed)
-4. UPDATE .agents/memory/MEMORY.md index with one-line pointer
+4. UPDATE .claude/memory/MEMORY.md index with one-line pointer
 5. CONFIRM to user what was saved
 
 RULES:
@@ -49,7 +49,7 @@ RULES:
 [OK] Saved to memory
 
 Type: [user/feedback/project/reference]
-File: .agents/memory/[topic-file].md
+File: .claude/memory/[topic-file].md
 Entry: [one-line summary of what was saved]
 
 This will be available in future sessions.

@@ -74,8 +74,8 @@ Which one? (default: 1)
 Auto preview uses `auto_preview.py` script:
 
 ```bash
-python .agents/scripts/auto_preview.py start [port]
-python .agents/scripts/auto_preview.py stop
-python .agents/scripts/auto_preview.py status
+python .claude/scripts/auto_preview.py start [port]
+python .claude/scripts/auto_preview.py stop
+python .claude/scripts/auto_preview.py status
 ```
 
