@@ -22,7 +22,7 @@ setup(
         'asyncpg>=0.27.0',
         'aiosqlite>=0.19.0',
         'pydantic>=2.0.0',
-        'websockets>=10.0',
+        'websockets>=11.0',
     ],
     zip_safe=True,
     maintainer='Nguyen Ngoc Thien',
