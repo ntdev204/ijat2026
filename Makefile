@@ -1,6 +1,7 @@
 COMPOSE_FILE := docker-compose.yml
 PROJECT_NAME := rai-jetson
-DOCKER_COMPOSE ?= docker compose
+# Auto-detect: prefer docker compose (v2 plugin), fall back to docker-compose (v1 standalone)
+DOCKER_COMPOSE ?= $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 COMPOSE := $(DOCKER_COMPOSE) -f $(COMPOSE_FILE) -p $(PROJECT_NAME)
 
 .PHONY: db-up db-down db-logs db-shell db-ps db-restart
