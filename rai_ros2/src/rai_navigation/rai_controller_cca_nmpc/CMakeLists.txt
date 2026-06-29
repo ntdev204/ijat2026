@@ -39,7 +39,6 @@ install(
 )
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY docs DESTINATION share/${PROJECT_NAME})
 
 ament_export_targets(rai_controller_cca_nmpcTargets HAS_LIBRARY_TARGET)
 ament_export_dependencies(geometry_msgs nav_msgs rclcpp)
