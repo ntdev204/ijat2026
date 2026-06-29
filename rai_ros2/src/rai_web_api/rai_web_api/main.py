@@ -2335,7 +2335,7 @@ async def _active_dataset_payload() -> dict:
 
 
 def main() -> None:
-    uvicorn.run(app, host=DEFAULT_HOST, port=DEFAULT_PORT, log_level="info")
+    uvicorn.run(app, host=DEFAULT_HOST, port=DEFAULT_PORT, log_level="info", ws="wsproto")
 
 
 if __name__ == "__main__":
