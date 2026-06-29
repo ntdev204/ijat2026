@@ -394,7 +394,7 @@ User Request → DECOMPOSE → CLASSIFY → DISPATCH → MONITOR → SYNTHESIZE 
 ### Memory Integration
 
 At orchestration start:
-1. Check `.agents/memory/MEMORY.md` for relevant past context
+1. Check `.claude/memory/MEMORY.md` for relevant past context
 2. Apply recalled preferences silently
 3. After orchestration, save key decisions with `/remember`
 

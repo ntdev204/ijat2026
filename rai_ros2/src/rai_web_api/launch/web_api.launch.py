@@ -19,13 +19,18 @@ def generate_launch_description():
     controller_prefix = install_root / 'rai_controller'
     controller_python_path = controller_prefix / 'local' / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'dist-packages'
     controller_library_path = controller_prefix / 'lib'
-    workspace_root = Path.home() / 'ijat2026'
+    workspace_root = Path(os.getenv('RAI_WORKSPACE_ROOT', str(Path.home() / 'ijat2026')))
     rai_ros2_data_dir = workspace_root / 'rai_ros2' / 'data'
 
     host_arg = DeclareLaunchArgument(
         'host',
-        default_value='100.116.199.115',
+        default_value=os.getenv('RAI_API_HOST', '0.0.0.0'),
         description='Host address for Rai FastAPI server'
+    )
+    lan_host_arg = DeclareLaunchArgument(
+        'lan_host',
+        default_value=os.getenv('RAI_LAN_HOST', os.getenv('RAI_SERVER_HOST', 'localhost')),
+        description='Browser-facing host for Rai FastAPI server'
     )
     port_arg = DeclareLaunchArgument(
         'port',
@@ -44,8 +49,8 @@ def generate_launch_description():
         additional_env={
             'RAI_API_HOST': LaunchConfiguration('host'),
             'RAI_API_PORT': LaunchConfiguration('port'),
-            'RAI_LAN_HOST': '100.116.199.115',
-            'RAI_DATASET_PATH': str(workspace_root / 'dataset'),
+            'RAI_LAN_HOST': LaunchConfiguration('lan_host'),
+            'RAI_WORKSPACE_ROOT': str(workspace_root),
             'RAI_NAVIGATION_MAP': str(rai_ros2_data_dir / 'map' / 'RAI.yaml'),
             'RAI_MAP_STORAGE_DIR': str(rai_ros2_data_dir / 'map'),
             'RAI_WORLD_STORAGE_DIR': str(rai_ros2_data_dir / 'worlds'),
@@ -56,6 +61,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         host_arg,
+        lan_host_arg,
         port_arg,
         web_api_node,
     ])

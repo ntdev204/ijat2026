@@ -1,70 +1,38 @@
 # rai_dataset_collection
 
-Manual dataset collection package for **Continuous Context-Aware NMPC (CCA-NMPC)** on the Rai Mecanum robot.
+Package này ghi dataset cho thực nghiệm CCA-NMPC: rosbag2, metadata run, context samples, human states, adaptive bounds và solver stats.
 
-There is no validated map yet, so scenario execution is **manual**, not automatic. The dataset protocol still requires the six S1-S6 scenarios.
+## Chạy qua dashboard
 
-The current perception stack uses a fine-tuned `YOLO26m` model from local
-weights such as `best.pt`, then bridges tracked humans into the controller.
+Khuyến nghị vận hành qua dashboard ở trang Dataset. Quy trình chi tiết nằm trong:
 
-## Required Manual Scenarios
+- [docs/04_chay_dataset_theo_kich_ban.md](../../../docs/04_chay_dataset_theo_kich_ban.md)
 
-| Scenario | Manual intent |
-|---|---|
-| `S1_open_zone` | Open area, no close human, low `phi_h` |
-| `S2_narrow_corridor` | Corridor/aisle-like run, clearance and lateral behavior |
-| `S3_human_proximate` | Pass near a standing or slow person |
-| `S4_dynamic_crossing` | A person crosses the robot path |
-| `S5_occlusion` | A person appears from an occluded area |
-| `S6_human_approaching` | A person approaches then recedes to expose directional context effects |
-
-Target:
-
-- `S1_open_zone`: 30 runs
-- `S2_narrow_corridor`: 30 runs
-- `S3_human_proximate`: 40 runs
-- `S4_dynamic_crossing`: 50 runs
-- `S5_occlusion`: 50 runs
-- `S6_human_approaching`: 60 runs
-
-## What It Records
-
-- Mecanum command data: `linear.x`, `linear.y`, `angular.z`.
-- Continuous context: `phi_h`, `d_h`, `d_safe`.
-- Adaptive bounds: `vx_max`, `vy_max`, `omega_max`.
-- Human state estimates: `x`, `y`, `vx`, `vy`, detector confidence, covariance trace.
-- Perception context input: nearest human distance, relative speed, human count, tracking quality.
-- Raw sensors, odom, TF, local costmap, reference path, predicted trajectory, solver stats.
-- Perception debug streams: image, depth, tracks, latency.
-
-## Start One Manual Run
+## Chạy trực tiếp bằng ROS 2
 
 ```bash
+source /opt/ros/humble/setup.bash
+source ~/ijat2026/rai_ros2/install/setup.bash
+
 ros2 launch rai_dataset_collection dataset_collection.launch.py \
   scenario:=S4_dynamic_crossing \
   controller:=CCA_NMPC \
   environment:=real \
-  run_id:=run_000 \
+  split:=unsplit \
+  run_id:=run_001 \
   auto_start:=true
 ```
 
-## Dataset Layout
+## Scenario IDs
 
-```text
-~/rai_datasets/canmpc/
-└── raw/
-    └── real/
-        └── S4_dynamic_crossing/
-            └── CCA_NMPC/
-                └── run_000/
-                    ├── rosbag2/
-                    └── metadata.json
-```
+- `S1_open_zone`
+- `S2_narrow_corridor`
+- `S3_human_proximate`
+- `S4_dynamic_crossing`
+- `S5_occlusion`
+- `S6_human_approaching`
 
-## Verify
+## Controllers
 
-```bash
-python3 scripts/verify_dataset.py \
-  --path ~/rai_datasets/canmpc \
-  --environment real
-```
+- `CCA_NMPC`: controller đề xuất có human context adaptation.
+- `NMPC`: nominal ablation không adaptation theo human context.

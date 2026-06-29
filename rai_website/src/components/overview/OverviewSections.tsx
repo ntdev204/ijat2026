@@ -28,7 +28,7 @@ export function OverviewMetrics({
       <MetricCard
         title="Adaptive FPS"
         value={formatNumber(ai.fps, 1)}
-        icon={<Video className="h-5 w-5 text-purple-500" />}
+        icon={<Video className="h-5 w-5 text-cyan-500" />}
       />
       <MetricCard
         title="Tracked Entities"

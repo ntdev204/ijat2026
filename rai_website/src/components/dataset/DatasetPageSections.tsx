@@ -178,7 +178,7 @@ export function DatasetOperationsSection({
     <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
       <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <FolderTree className="h-4 w-4 text-violet-600" />
+          <FolderTree className="h-4 w-4 text-cyan-600" />
           Recording Control
         </div>
         <div className="flex flex-wrap gap-2 max-sm:[&_[data-slot=button]]:flex-1">
@@ -357,7 +357,7 @@ function DatasetPipelineCard({
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-        <Table2 className="h-4 w-4 text-indigo-600" />
+        <Table2 className="h-4 w-4 text-teal-600" />
         Processing Pipeline
       </div>
         <div className="flex flex-wrap gap-2 max-sm:[&_[data-slot=button]]:flex-1">

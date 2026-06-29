@@ -1,13 +1,7 @@
 "use client";
 
-import { getWebSocketBaseUrl } from "@/lib/api";
+import { resolveWebSocketEndpoint } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-function resolveWebSocketPath(path: string) {
-  if (path.startsWith("/api/ws/")) return path;
-  if (path.startsWith("/ws/")) return `/api${path}`;
-  return path;
-}
 
 interface UseWebSocketOptions {
   binaryType?: "blob" | "arraybuffer";
@@ -42,9 +36,7 @@ export function useWebSocket(path: string, options: UseWebSocketOptions = {}) {
           return;
         }
 
-        const resolvedPath = resolveWebSocketPath(path);
-        const url = new URL(`${getWebSocketBaseUrl(resolvedPath)}${resolvedPath}`);
-        const ws = new WebSocket(url.toString());
+        const ws = new WebSocket(resolveWebSocketEndpoint(path));
         ws.binaryType = binaryType;
         wsRef.current = ws;
 

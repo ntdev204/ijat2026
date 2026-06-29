@@ -12,6 +12,7 @@ import threading
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -52,11 +53,11 @@ DEFAULT_RAI_ROS2_DATA_DIR = DEFAULT_WORKSPACE_DIR / "rai_ros2" / "data"
 DATASET_BASE_PATH = Path(
     os.getenv("RAI_DATASET_PATH", str(DEFAULT_WORKSPACE_DIR / "dataset"))
 ).expanduser()
-DEFAULT_HOST = os.getenv("RAI_API_HOST", "100.116.199.115")
+DEFAULT_HOST = os.getenv("RAI_API_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("RAI_API_PORT", "8080"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "unknown").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
-DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", "100.116.199.115").strip()
+DEFAULT_LAN_HOST = os.getenv("RAI_LAN_HOST", os.getenv("RAI_SERVER_HOST", "localhost")).strip()
 IS_HUB_ROLE = DEVICE_ROLE in {"hub", "laptop"}
 try:
     Path(get_package_share_directory("rai_web_api")).resolve()
@@ -67,7 +68,19 @@ except Exception:
 def _cors_origins() -> list[str]:
     configured = os.getenv("RAI_API_CORS", "").strip()
     if configured:
-        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+        origins = []
+        for origin in configured.split(","):
+            cleaned = origin.strip()
+            if not cleaned:
+                continue
+            try:
+                parsed = urllib.parse.urlparse(cleaned)
+            except Exception:
+                continue
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
+            origins.append(f"{parsed.scheme}://{parsed.netloc}")
+        return origins
     default_origins = [
         f"http://{DEFAULT_LAN_HOST}:3000",
         f"http://{DEFAULT_LAN_HOST}",
@@ -237,14 +250,15 @@ RUNTIME_SETTING_CAMERA_DEPTH = "system.camera.enable_depth"
 ROLE_ALLOWED_ACTIONS = {
     "pi": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar"},
     "jetson": {"controller", "system", "camera"},
-    "hub": {"system", "simulation"},
-    "laptop": {"system", "simulation"},
+    "hub": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar", "camera"},
+    "laptop": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar", "camera"},
     "sim": {"teleop", "navigation", "slam", "maps", "simulation", "system"},
     "unknown": {"maps", "simulation", "system"},
 }
 ALLOWED_ACTIONS = ROLE_ALLOWED_ACTIONS.get(DEVICE_ROLE, set())
-PI_API_URL = os.getenv("RAI_PI_API_URL", "").strip().rstrip("/")
-JETSON_API_URL = os.getenv("RAI_JETSON_API_URL", "").strip().rstrip("/")
+PI_AGENT_URL = os.getenv("RAI_PI_AGENT_URL", "").strip().rstrip("/")
+JETSON_AGENT_URL = os.getenv("RAI_JETSON_AGENT_URL", "").strip().rstrip("/")
+AGENT_RESPONSE_LIMIT_BYTES = 1024 * 1024
 
 
 class WebRtcOffer(BaseModel):
@@ -640,9 +654,9 @@ def _system_runtime_payload() -> dict:
             {"id": "sim", "label": "Mo phong", "description": "Robot mo phong trong Gazebo/RViz, khong dung phan cung that."},
             {"id": "hybrid", "label": "Hybrid", "description": "Robot that ket hop visualization/simulation workspace tren Gazebo hoac RViz."},
         ],
-        "peer_devices": {
-            "pi": PI_API_URL or None,
-            "jetson": JETSON_API_URL or None,
+        "runtime_agents": {
+            "pi": PI_AGENT_URL or None,
+            "jetson": JETSON_AGENT_URL or None,
         },
     }
 
@@ -837,49 +851,80 @@ def _process_component_entry(
     }
 
 
-def _peer_base_url(device: str) -> str:
+def _agent_base_url(device: str) -> str:
     key = device.strip().lower()
     if key == "pi":
-        return PI_API_URL
+        return PI_AGENT_URL
     if key == "jetson":
-        return JETSON_API_URL
+        return JETSON_AGENT_URL
     return ""
 
 
-def _peer_headers() -> dict[str, str]:
-    return {
-        "Content-Type": "application/json",
-        "X-RAI-Internal-Proxy": "1",
-    }
+def _read_agent_json(response: object) -> dict:
+    raw = response.read(AGENT_RESPONSE_LIMIT_BYTES + 1)
+    if len(raw) > AGENT_RESPONSE_LIMIT_BYTES:
+        raise HTTPException(status_code=502, detail="Device API response is too large")
+    return json.loads(raw.decode("utf-8") or "{}")
 
 
-def _peer_request(method: str, device: str, endpoint: str, payload: Optional[dict] = None) -> dict:
-    base_url = _peer_base_url(device)
+def _agent_request_sync(method: str, device: str, endpoint: str, payload: Optional[dict] = None) -> dict:
+    base_url = _agent_base_url(device)
     if not base_url:
-        raise HTTPException(status_code=503, detail=f"Peer API URL for device '{device}' is not configured")
+        raise HTTPException(status_code=503, detail=f"Runtime agent URL for device '{device}' is not configured")
+
+    parsed_base = urllib.parse.urlparse(base_url)
+    if parsed_base.scheme not in {"http", "https"} or not parsed_base.netloc:
+        raise HTTPException(status_code=503, detail=f"Runtime agent URL for device '{device}' is invalid")
 
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
-        f"{base_url}{endpoint}",
+        urllib.parse.urljoin(f"{base_url.rstrip('/')}/", endpoint.lstrip('/')),
         method=method.upper(),
         data=body,
-        headers=_peer_headers(),
+        headers={"Content-Type": "application/json", "X-RAI-Server-Proxy": "1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=4.0) as response:
-            raw = response.read().decode("utf-8") if response.length != 0 else "{}"
-            return json.loads(raw or "{}")
+            return _read_agent_json(response)
     except urllib.error.HTTPError as exc:
-        try:
-            error_payload = json.loads(exc.read().decode("utf-8"))
-            detail = error_payload.get("detail") or str(exc)
-        except Exception:
-            detail = str(exc)
-        raise HTTPException(status_code=exc.code, detail=detail) from exc
+        logger.warning("Device API %s %s returned HTTP %s", device, endpoint, exc.code)
+        raise HTTPException(status_code=exc.code, detail=f"Device API '{device}' rejected the request") from exc
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Cannot reach peer device '{device}': {exc}") from exc
+        logger.warning("Cannot reach device API %s %s: %s", device, endpoint, exc)
+        raise HTTPException(status_code=503, detail=f"Cannot reach device API '{device}'") from exc
+
+
+async def _agent_request(method: str, device: str, endpoint: str, payload: Optional[dict] = None) -> dict:
+    return await asyncio.to_thread(_agent_request_sync, method, device, endpoint, payload)
+
+
+async def _pi_agent_request(method: str, endpoint: str, payload: Optional[dict] = None) -> dict:
+    return await _agent_request(method, "pi", endpoint, payload)
+
+
+async def _proxy_system_component(device: str, route_component: str, action: str, payload: Optional[dict] = None) -> Optional[dict]:
+    if not IS_HUB_ROLE:
+        return None
+    return await _agent_request("POST", device, f"/api/system/components/{route_component}/{action}", payload)
+
+
+def _merge_peer_component(local_component: dict, peer_component: dict) -> dict:
+    merged_capabilities = {
+        **local_component.get("capabilities", {}),
+        **peer_component.get("capabilities", {}),
+    }
+    return {
+        **local_component,
+        "host_device": peer_component.get("host_device", local_component.get("host_device")),
+        "allowed_here": bool(peer_component.get("allowed_here", local_component.get("allowed_here", False))),
+        "running": bool(peer_component.get("running", local_component.get("running", False))),
+        "pid": peer_component.get("pid"),
+        "capabilities": merged_capabilities,
+    }
 
 
 def _robot_base_launch_command() -> str:
@@ -981,7 +1026,17 @@ def _local_system_components() -> list[dict]:
 
 
 def _can_proxy_to_peer(device: str) -> bool:
-    return bool(_peer_base_url(device))
+    return bool(_agent_base_url(device))
+
+
+def _require_bridge_node() -> WebBridgeNode:
+    if bridge_node is None:
+        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
+    return bridge_node
+
+
+def _system_component_by_id(component_id: str) -> dict:
+    return next(item for item in _local_system_components() if item["id"] == component_id)
 
 
 def _publish_anchor_pose_after_delay(delay_sec: float = 3.0, attempts: int = 5, interval_sec: float = 0.5) -> None:
@@ -1161,28 +1216,18 @@ async def system_runtime() -> dict:
 
 
 @app.post("/api/system/operation-mode")
-async def set_system_operation_mode(request: SystemOperationModeRequest, http_request: Request) -> dict:
+async def set_system_operation_mode(request: SystemOperationModeRequest) -> dict:
     _require_action("system")
     global system_operation_mode
     system_operation_mode = request.mode
     await _set_runtime_setting(RUNTIME_SETTING_OPERATION_MODE, request.mode)
-    is_internal_proxy = http_request.headers.get("X-RAI-Internal-Proxy", "").strip() == "1"
-    if not is_internal_proxy:
-        peer_targets: list[str] = []
-        if IS_HUB_ROLE:
-            if _can_proxy_to_peer("pi"):
-                peer_targets.append("pi")
-            if _can_proxy_to_peer("jetson"):
-                peer_targets.append("jetson")
-        elif DEVICE_ROLE == "pi" and _can_proxy_to_peer("jetson"):
-            peer_targets.append("jetson")
-        elif DEVICE_ROLE == "jetson" and _can_proxy_to_peer("pi"):
-            peer_targets.append("pi")
-        for peer in peer_targets:
-            try:
-                _peer_request("POST", peer, "/api/system/operation-mode", payload=request.dict())
-            except HTTPException as exc:
-                logger.warning("Failed to synchronize operation mode to %s: %s", peer, exc.detail)
+    if IS_HUB_ROLE:
+        for device in ("pi", "jetson"):
+            if _can_proxy_to_peer(device):
+                try:
+                    await _agent_request("POST", device, "/api/system/operation-mode", payload={"mode": request.mode})
+                except Exception:
+                    logger.exception("Failed to sync operation mode to %s", device)
     return {
         "success": True,
         "message": f"System operation mode switched to {request.mode}.",
@@ -1194,172 +1239,44 @@ async def set_system_operation_mode(request: SystemOperationModeRequest, http_re
 async def system_components(request: Request) -> dict:
     _require_action("system")
     await _load_runtime_settings()
-    components = _local_system_components()
-    proxied: list[dict] = []
-    is_internal_proxy = request.headers.get("X-RAI-Internal-Proxy", "").strip() == "1"
-
-    if IS_HUB_ROLE and not is_internal_proxy:
-        hub_components = [item for item in components if item["id"] == "simulation"]
-        peer_components: list[dict] = []
-
-        if _can_proxy_to_peer("pi"):
-            try:
-                peer_payload = _peer_request("GET", "pi", "/api/system/components")
-                peer_components.extend(
-                    item
-                    for item in peer_payload.get("components", [])
-                    if item.get("host_device") == "pi"
-                )
-            except HTTPException as exc:
-                peer_components.extend([
-                    {
-                        "id": "robot_base",
-                        "label": "Robot Base",
-                        "host_device": "pi",
-                        "action": "hardware",
-                        "allowed_here": False,
-                        "running": False,
-                        "pid": None,
-                        "launch_file": "turn_on_rai_robot.launch.py",
-                        "description": f"Pi unavailable: {exc.detail}",
-                        "capabilities": {},
-                        "proxy_error": str(exc.detail),
-                    },
-                    {
-                        "id": "lidar",
-                        "label": "LiDAR",
-                        "host_device": "pi",
-                        "action": "lidar",
-                        "allowed_here": False,
-                        "running": False,
-                        "pid": None,
-                        "launch_file": "rai_lidar.launch.py",
-                        "description": f"Pi unavailable: {exc.detail}",
-                        "capabilities": {},
-                        "proxy_error": str(exc.detail),
-                    },
-                    {
-                        "id": "slam",
-                        "label": "SLAM",
-                        "host_device": "pi",
-                        "action": "slam",
-                        "allowed_here": False,
-                        "running": False,
-                        "pid": None,
-                        "launch_file": "online_async_launch.py",
-                        "description": f"Pi unavailable: {exc.detail}",
-                        "capabilities": {},
-                        "proxy_error": str(exc.detail),
-                    },
-                    {
-                        "id": "navigation",
-                        "label": "Navigation",
-                        "host_device": "pi",
-                        "action": "navigation",
-                        "allowed_here": False,
-                        "running": False,
-                        "pid": None,
-                        "launch_file": "rai_navigation.launch.py",
-                        "description": f"Pi unavailable: {exc.detail}",
-                        "capabilities": {},
-                        "proxy_error": str(exc.detail),
-                    },
-                    {
-                        "id": "dataset",
-                        "label": "Dataset",
-                        "host_device": "pi",
-                        "action": "dataset",
-                        "allowed_here": False,
-                        "running": False,
-                        "pid": None,
-                        "launch_file": "dataset_collection.launch.py",
-                        "description": f"Pi unavailable: {exc.detail}",
-                        "capabilities": {},
-                        "proxy_error": str(exc.detail),
-                    },
-                ])
-
-        if _can_proxy_to_peer("jetson"):
-            try:
-                peer_payload = _peer_request("GET", "jetson", "/api/system/components")
-                peer_components.extend(
-                    item
-                    for item in peer_payload.get("components", [])
-                    if item.get("host_device") == "jetson" or item.get("id") == "camera"
-                )
-            except HTTPException as exc:
-                peer_components.append({
-                    "id": "camera",
-                    "label": "Camera",
-                    "host_device": "jetson",
-                    "action": "camera",
-                    "allowed_here": False,
-                    "running": False,
-                    "pid": None,
-                    "launch_file": "rai_camera.launch.py",
-                    "description": f"Jetson unavailable: {exc.detail}",
-                    "capabilities": {"enable_depth_toggle": True},
-                    "proxy_error": str(exc.detail),
-                })
-
-        merged_by_id = {item["id"]: item for item in [*peer_components, *hub_components]}
-        return {
-            **_system_runtime_payload(),
-            "components": list(merged_by_id.values()),
-        }
-
-    if DEVICE_ROLE == "pi" and _can_proxy_to_peer("jetson") and not is_internal_proxy:
-        try:
-            peer_payload = _peer_request("GET", "jetson", "/api/system/components")
-            proxied = peer_payload.get("components", [])
-        except HTTPException as exc:
-            proxied = [{
-                "id": "camera",
-                "label": "Camera",
-                "host_device": "jetson",
-                "action": "camera",
-                "allowed_here": False,
-                "running": False,
-                "pid": None,
-                "launch_file": "rai_camera.launch.py",
-                "description": f"Jetson unavailable: {exc.detail}",
-                "capabilities": {"enable_depth_toggle": True},
-                "proxy_error": str(exc.detail),
-            }]
-
-    if DEVICE_ROLE == "jetson" and _can_proxy_to_peer("pi") and not is_internal_proxy:
-        try:
-            peer_payload = _peer_request("GET", "pi", "/api/system/components")
-            proxied = peer_payload.get("components", [])
-        except HTTPException:
-            proxied = []
-
-    if DEVICE_ROLE == "pi":
-        proxied = [item for item in proxied if item.get("host_device") == "jetson"]
-        components = [item for item in components if item["host_device"] == "pi"] + proxied
-    elif DEVICE_ROLE == "jetson":
-        proxied = [item for item in proxied if item.get("host_device") == "pi"]
-        components = proxied + [item for item in components if item["host_device"] == "jetson"]
-
+    components_by_id = {component["id"]: component for component in _local_system_components()}
+    if IS_HUB_ROLE:
+        for device in ("pi", "jetson"):
+            if _can_proxy_to_peer(device):
+                try:
+                    peer_components = await _agent_request("GET", device, "/api/system/components")
+                    for component in peer_components.get("components", []):
+                        component_id = component.get("id")
+                        if component.get("host_device") != device or not component_id:
+                            continue
+                        if component_id in components_by_id:
+                            components_by_id[component_id] = _merge_peer_component(components_by_id[component_id], component)
+                        else:
+                            components_by_id[component_id] = component
+                except Exception:
+                    logger.exception("Failed to fetch components from %s", device)
     return {
         **_system_runtime_payload(),
-        "components": components,
+        "components": list(components_by_id.values()),
     }
 
 
 @app.post("/api/system/components/robot/start")
 async def start_robot_base() -> dict:
+    proxy_response = await _proxy_system_component("pi", "robot", "start")
+    if proxy_response is not None:
+        return proxy_response
     _require_action("hardware")
     global robot_base_process
     if robot_base_process is not None and robot_base_process.poll() is None:
         return {
             "success": True,
             "message": "Robot base is already running.",
-            "component": next(item for item in _local_system_components() if item["id"] == "robot_base"),
+            "component": _system_component_by_id("robot_base"),
         }
     command = _robot_base_launch_command()
     robot_base_process = _start_process(command, env=_ros_runtime_env())
-    component = next(item for item in _local_system_components() if item["id"] == "robot_base")
+    component = _system_component_by_id("robot_base")
     return {
         "success": True,
         "message": "Robot base bringup started.",
@@ -1371,11 +1288,14 @@ async def start_robot_base() -> dict:
 
 @app.post("/api/system/components/robot/stop")
 async def stop_robot_base() -> dict:
+    proxy_response = await _proxy_system_component("pi", "robot", "stop")
+    if proxy_response is not None:
+        return proxy_response
     _require_action("hardware")
     global robot_base_process
     result = _stop_stack_process(robot_base_process, ROBOT_BASE_KILL_PATTERNS)
     robot_base_process = None
-    component = next(item for item in _local_system_components() if item["id"] == "robot_base")
+    component = _system_component_by_id("robot_base")
     return {
         "success": True,
         "message": "Robot base stopped.",
@@ -1386,17 +1306,20 @@ async def stop_robot_base() -> dict:
 
 @app.post("/api/system/components/lidar/start")
 async def start_lidar() -> dict:
+    proxy_response = await _proxy_system_component("pi", "lidar", "start")
+    if proxy_response is not None:
+        return proxy_response
     _require_action("lidar")
     global lidar_process
     if lidar_process is not None and lidar_process.poll() is None:
         return {
             "success": True,
             "message": "LiDAR is already running.",
-            "component": next(item for item in _local_system_components() if item["id"] == "lidar"),
+            "component": _system_component_by_id("lidar"),
         }
     command = _lidar_launch_command()
     lidar_process = _start_process(command, env=_ros_runtime_env())
-    component = next(item for item in _local_system_components() if item["id"] == "lidar")
+    component = _system_component_by_id("lidar")
     return {
         "success": True,
         "message": "LiDAR bringup started.",
@@ -1408,11 +1331,14 @@ async def start_lidar() -> dict:
 
 @app.post("/api/system/components/lidar/stop")
 async def stop_lidar() -> dict:
+    proxy_response = await _proxy_system_component("pi", "lidar", "stop")
+    if proxy_response is not None:
+        return proxy_response
     _require_action("lidar")
     global lidar_process
     result = _stop_stack_process(lidar_process, LIDAR_KILL_PATTERNS)
     lidar_process = None
-    component = next(item for item in _local_system_components() if item["id"] == "lidar")
+    component = _system_component_by_id("lidar")
     return {
         "success": True,
         "message": "LiDAR stopped.",
@@ -1423,10 +1349,10 @@ async def stop_lidar() -> dict:
 
 @app.post("/api/system/components/camera/start")
 async def start_camera(request: SystemComponentCommandRequest) -> dict:
-    if "camera" not in ALLOWED_ACTIONS:
-        if DEVICE_ROLE == "pi":
-            return _peer_request("POST", "jetson", "/api/system/components/camera/start", payload=request.dict())
-        _require_action("camera")
+    proxy_response = await _proxy_system_component("jetson", "camera", "start", request.dict())
+    if proxy_response is not None:
+        return proxy_response
+    _require_action("camera")
     global camera_process
     global camera_depth_enabled
     camera_depth_enabled = request.enable_depth
@@ -1435,11 +1361,11 @@ async def start_camera(request: SystemComponentCommandRequest) -> dict:
         return {
             "success": True,
             "message": "Camera is already running.",
-            "component": next(item for item in _local_system_components() if item["id"] == "camera"),
+            "component": _system_component_by_id("camera"),
         }
     command = _camera_launch_command(enable_depth=request.enable_depth)
     camera_process = _start_process(command, env=_ros_runtime_env())
-    component = next(item for item in _local_system_components() if item["id"] == "camera")
+    component = _system_component_by_id("camera")
     component["capabilities"]["enable_depth"] = request.enable_depth
     return {
         "success": True,
@@ -1452,14 +1378,14 @@ async def start_camera(request: SystemComponentCommandRequest) -> dict:
 
 @app.post("/api/system/components/camera/stop")
 async def stop_camera() -> dict:
-    if "camera" not in ALLOWED_ACTIONS:
-        if DEVICE_ROLE == "pi":
-            return _peer_request("POST", "jetson", "/api/system/components/camera/stop")
-        _require_action("camera")
+    proxy_response = await _proxy_system_component("jetson", "camera", "stop")
+    if proxy_response is not None:
+        return proxy_response
+    _require_action("camera")
     global camera_process
     result = _stop_stack_process(camera_process, CAMERA_KILL_PATTERNS)
     camera_process = None
-    component = next(item for item in _local_system_components() if item["id"] == "camera")
+    component = _system_component_by_id("camera")
     return {
         "success": True,
         "message": "Camera stopped.",
@@ -1470,21 +1396,33 @@ async def stop_camera() -> dict:
 
 @app.post("/api/system/components/slam/start")
 async def start_system_slam() -> dict:
+    proxy_response = await _proxy_system_component("pi", "slam", "start")
+    if proxy_response is not None:
+        return proxy_response
     return await start_slam()
 
 
 @app.post("/api/system/components/slam/stop")
 async def stop_system_slam() -> dict:
+    proxy_response = await _proxy_system_component("pi", "slam", "stop")
+    if proxy_response is not None:
+        return proxy_response
     return await stop_slam()
 
 
 @app.post("/api/system/components/navigation/start")
-async def start_system_navigation(db: AsyncSession = Depends(get_db)) -> dict:
-    return await start_rai_navigation_stack(db)
+async def start_system_navigation() -> dict:
+    proxy_response = await _proxy_system_component("pi", "navigation", "start")
+    if proxy_response is not None:
+        return proxy_response
+    return await start_rai_navigation_stack()
 
 
 @app.post("/api/system/components/navigation/stop")
 async def stop_system_navigation() -> dict:
+    proxy_response = await _proxy_system_component("pi", "navigation", "stop")
+    if proxy_response is not None:
+        return proxy_response
     return await stop_rai_navigation_stack()
 
 
@@ -1506,6 +1444,10 @@ async def stop_system_simulation() -> dict:
 
 @app.post("/api/system/components/dataset/start")
 async def start_system_dataset() -> dict:
+    if IS_HUB_ROLE:
+        proxy_response = await _proxy_system_component("pi", "dataset", "start")
+        if proxy_response is not None:
+            return proxy_response
     request = DatasetLaunchRequest(
         scenario_name="S1_open_zone",
         controller_id="CCA_NMPC",
@@ -1519,6 +1461,10 @@ async def start_system_dataset() -> dict:
 
 @app.post("/api/system/components/dataset/stop")
 async def stop_system_dataset() -> dict:
+    if IS_HUB_ROLE:
+        proxy_response = await _proxy_system_component("pi", "dataset", "stop")
+        if proxy_response is not None:
+            return proxy_response
     return await stop_dataset_launch()
 
 
@@ -1698,18 +1644,20 @@ async def control_ws(websocket: WebSocket) -> None:
 
 @app.post("/api/robot/cmd_vel")
 async def publish_cmd_vel(command: VelocityCommand) -> dict:
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/cmd_vel", payload=command.dict())
     _require_action("teleop")
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    bridge_node.publish_cmd_vel(command.linear_x, command.linear_y, command.angular_z)
+    node = _require_bridge_node()
+    node.publish_cmd_vel(command.linear_x, command.linear_y, command.angular_z)
     return {"success": True}
 
 
 @app.post("/api/robot/nav/goal")
 async def send_nav_goal(goal: NavGoalRequest) -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    success = bridge_node.send_cca_nmpc_goal(goal.x, goal.y, goal.yaw)
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/nav/goal", payload=goal.dict())
+    node = _require_bridge_node()
+    success = node.send_cca_nmpc_goal(goal.x, goal.y, goal.yaw)
     if not success:
         raise HTTPException(status_code=503, detail="RAI navigation goal publisher is not available")
     return {"success": True, "controller": "CCA_NMPC", "message": "RAI navigation goal published."}
@@ -1717,9 +1665,10 @@ async def send_nav_goal(goal: NavGoalRequest) -> dict:
 
 @app.post("/api/robot/nav/route")
 async def send_nav_route(route: RoutePlanRequest) -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    success = bridge_node.send_cca_nmpc_route(
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/nav/route", payload=route.dict())
+    node = _require_bridge_node()
+    success = node.send_cca_nmpc_route(
         {"x": route.start.x, "y": route.start.y, "yaw": route.start.yaw},
         {"x": route.goal.x, "y": route.goal.y, "yaw": route.goal.yaw},
         route.start_tolerance,
@@ -1734,26 +1683,29 @@ async def send_nav_route(route: RoutePlanRequest) -> dict:
 
 @app.post("/api/robot/nav/cancel")
 async def cancel_nav_goal() -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    bridge_node.cancel_nav_goal()
-    bridge_node.publish_cmd_vel(0.0, 0.0, 0.0)
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/nav/cancel")
+    node = _require_bridge_node()
+    node.cancel_nav_goal()
+    node.publish_cmd_vel(0.0, 0.0, 0.0)
     return {"success": True}
 
 
 @app.get("/api/robot/anchors")
 async def get_robot_anchors() -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    return bridge_node.get_anchor_state()
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("GET", "/api/robot/anchors")
+    node = _require_bridge_node()
+    return node.get_anchor_state()
 
 
 @app.post("/api/robot/initial_pose")
 async def set_initial_pose(request: InitialPoseRequest) -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    pose = bridge_node.publish_initial_pose(request.x, request.y, request.yaw, set_home=request.set_home)
-    anchors = bridge_node.get_anchor_state()
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/initial_pose", payload=request.dict())
+    node = _require_bridge_node()
+    pose = node.publish_initial_pose(request.x, request.y, request.yaw, set_home=request.set_home)
+    anchors = node.get_anchor_state()
     return {
         "success": True,
         "message": "Initial pose published.",
@@ -1764,26 +1716,30 @@ async def set_initial_pose(request: InitialPoseRequest) -> dict:
 
 @app.post("/api/robot/home")
 async def set_home_pose(request: PoseRequest) -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    pose = bridge_node.set_home_pose(request.x, request.y, request.yaw)
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/home", payload=request.dict())
+    node = _require_bridge_node()
+    pose = node.set_home_pose(request.x, request.y, request.yaw)
     return {"success": True, "message": "Home pose updated.", "home_pose": pose}
 
 
 @app.post("/api/robot/nav/home")
 async def send_home_goal() -> dict:
-    if bridge_node is None:
-        raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
-    anchors = bridge_node.get_anchor_state()
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/robot/nav/home")
+    node = _require_bridge_node()
+    anchors = node.get_anchor_state()
     home_pose = anchors.get("home_pose")
     if home_pose is None:
         raise HTTPException(status_code=503, detail="Home pose is not set")
-    bridge_node.send_cca_nmpc_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
+    node.send_cca_nmpc_goal(home_pose["x"], home_pose["y"], home_pose.get("yaw", 0.0))
     return {"success": True, "message": "RAI navigation home goal published."}
 
 
 @app.get("/api/rai-navigation/options")
 async def rai_navigation_options() -> dict:
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("GET", "/api/rai-navigation/options")
     _require_action("navigation")
     return {
         "local_planners": RAI_CONTROLLER_OPTIONS,
@@ -1793,6 +1749,8 @@ async def rai_navigation_options() -> dict:
 
 @app.get("/api/rai-navigation/config")
 async def rai_navigation_config() -> dict:
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("GET", "/api/rai-navigation/config")
     _require_action("navigation")
     sim_running = simulation_process is not None and simulation_process.poll() is None
     return {
@@ -1807,6 +1765,8 @@ async def rai_navigation_config() -> dict:
 
 @app.post("/api/rai-navigation/config")
 async def set_rai_navigation_config(request: RaiNavigationConfigRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/rai-navigation/config", payload=request.dict())
     _require_action("navigation")
     global rai_navigation_process
     local_planner = request.local_planner.upper()
@@ -1836,12 +1796,14 @@ async def set_rai_navigation_config(request: RaiNavigationConfigRequest, db: Asy
     if rai_navigation_process is not None and rai_navigation_process.poll() is None:
         _stop_stack_process(rai_navigation_process, RAI_NAVIGATION_KILL_PATTERNS)
         rai_navigation_process = None
-        return await start_rai_navigation_stack(db)
+        return await start_rai_navigation_stack()
     return await rai_navigation_config()
 
 
 @app.post("/api/rai-navigation/start")
-async def start_rai_navigation_stack(db: AsyncSession = Depends(get_db)) -> dict:
+async def start_rai_navigation_stack() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/rai-navigation/start")
     _require_action("navigation")
     global rai_navigation_process
     if simulation_process is not None and simulation_process.poll() is None and simulation_runtime_config["start_navigation"]:
@@ -1893,6 +1855,8 @@ async def start_rai_navigation_stack(db: AsyncSession = Depends(get_db)) -> dict
 
 @app.post("/api/rai-navigation/stop")
 async def stop_rai_navigation_stack() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/rai-navigation/stop")
     _require_action("navigation")
     global rai_navigation_process
     result = _stop_stack_process(rai_navigation_process, RAI_NAVIGATION_KILL_PATTERNS)
@@ -1905,6 +1869,8 @@ async def stop_rai_navigation_stack() -> dict:
 
 @app.post("/api/robot/slam/start")
 async def start_slam() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/robot/slam/start")
     _require_action("slam")
     global slam_process
     if simulation_process is not None and simulation_process.poll() is None and simulation_runtime_config["start_slam"]:
@@ -1929,6 +1895,8 @@ async def start_slam() -> dict:
 
 @app.post("/api/robot/slam/stop")
 async def stop_slam() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/robot/slam/stop")
     _require_action("slam")
     global slam_process
     if simulation_process is not None and simulation_process.poll() is None and simulation_runtime_config["start_slam"]:
@@ -2018,6 +1986,8 @@ async def stop_simulation() -> dict:
 
 @app.post("/api/map/save")
 async def save_map(request: SaveMapRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    if IS_HUB_ROLE:
+        return await _pi_agent_request("POST", "/api/map/save", payload=request.dict())
     _require_action("maps")
     if bridge_node is None:
         raise HTTPException(status_code=503, detail="ROS2 bridge is not ready")
@@ -2183,6 +2153,8 @@ async def prepare_dataset_artifacts() -> dict:
 
 @app.get("/api/dataset/launch/status")
 async def dataset_launch_status() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("GET", "pi", "/api/dataset/launch/status")
     _require_action("dataset")
     running = dataset_launch_process is not None and dataset_launch_process.poll() is None
     return {
@@ -2194,6 +2166,8 @@ async def dataset_launch_status() -> dict:
 
 @app.post("/api/dataset/launch/start")
 async def start_dataset_launch(request: DatasetLaunchRequest) -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/dataset/launch/start", payload=request.dict())
     _require_action("dataset")
     global dataset_launch_process
     if dataset_launch_process is not None and dataset_launch_process.poll() is None:
@@ -2209,6 +2183,8 @@ async def start_dataset_launch(request: DatasetLaunchRequest) -> dict:
 
 @app.post("/api/dataset/launch/stop")
 async def stop_dataset_launch() -> dict:
+    if IS_HUB_ROLE:
+        return await _agent_request("POST", "pi", "/api/dataset/launch/stop")
     _require_action("dataset")
     global dataset_launch_process
     result = _stop_stack_process(dataset_launch_process, DATASET_LAUNCH_KILL_PATTERNS)

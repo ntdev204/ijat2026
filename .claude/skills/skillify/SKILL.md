@@ -75,7 +75,7 @@ effort: [low | medium | high]
 
 ### Step 3: Place the Skill
 ```
-.agents/skills/[skill-name]/SKILL.md
+.claude/skills/[skill-name]/SKILL.md
 ```
 
 ### Step 4: Verify
@@ -108,7 +108,7 @@ Before finalizing a new skill:
 
 | Check | Criteria |
 |---|---|
-| **Uniqueness** | No existing skill covers this (grep `.agents/skills/`) |
+| **Uniqueness** | No existing skill covers this (grep `.claude/skills/`) |
 | **Reusability** | Useful across multiple projects, not just one |
 | **Completeness** | Has overview, when to use, protocol, verification |
 | **Frontmatter** | All required fields present and accurate |

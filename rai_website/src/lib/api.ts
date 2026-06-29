@@ -1,76 +1,58 @@
 const DEFAULT_ROBOT_API_PORT = "8080";
-const DEFAULT_LAN_HOST = "100.116.199.115";
 
-function configuredApiBaseUrl() {
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/$/, "");
+}
+
+function configuredApiBaseUrl(): string | undefined {
   return process.env.NEXT_PUBLIC_API_URL?.trim();
 }
 
-function configuredPiApiBaseUrl() {
+function configuredPiApiBaseUrl(): string | undefined {
   return process.env.NEXT_PUBLIC_PI_API_URL?.trim();
 }
 
-function configuredJetsonApiBaseUrl() {
+function configuredJetsonApiBaseUrl(): string | undefined {
   return process.env.NEXT_PUBLIC_JETSON_API_URL?.trim();
 }
 
-function isFrontendDevHost(location: Location) {
-  return location.port === "3000";
+function buildOrigin(protocol: string, hostname: string, port?: string): string {
+  return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
 }
 
-export function getApiBaseUrl() {
-  const configured = configuredApiBaseUrl();
-  if (configured) return configured.replace(/\/$/, "");
-
-  if (typeof window !== "undefined") {
-    if (isFrontendDevHost(window.location)) {
-      return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_ROBOT_API_PORT}`;
-    }
-    return window.location.origin;
+function getErrorDetail(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object" || !("detail" in payload)) {
+    return undefined;
   }
 
-  return `http://${DEFAULT_LAN_HOST}:${DEFAULT_ROBOT_API_PORT}`;
+  const detail = payload.detail;
+  return typeof detail === "string" ? detail : undefined;
 }
 
-function resolveDirectApiBase(endpoint: string) {
-  const normalized = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+function toWebSocketOrigin(apiBaseUrl: string): string {
+  const socketUrl = new URL(apiBaseUrl);
+  if (socketUrl.protocol === "http:") {
+    socketUrl.protocol = "ws:";
+  } else if (socketUrl.protocol === "https:") {
+    socketUrl.protocol = "wss:";
+  }
+  return trimTrailingSlash(socketUrl.toString());
+}
+
+function resolveWebSocketPath(path: string): string {
+  if (path.startsWith("/api/ws/")) return path;
+  if (path.startsWith("/ws/")) return `/api${path}`;
+  return path;
+}
+
+function resolveDirectWebSocketBase(path: string): string | undefined {
+  const normalized = resolveWebSocketPath(path);
 
   if (normalized === "/api/webrtc/offer") {
-    return configuredJetsonApiBaseUrl();
+    const configuredJetson = configuredJetsonApiBaseUrl();
+    return configuredJetson ? toWebSocketOrigin(configuredJetson) : undefined;
   }
 
-  if (
-    normalized.startsWith("/api/dataset") ||
-    normalized.startsWith("/api/map") ||
-    normalized.startsWith("/api/rai-navigation") ||
-    normalized.startsWith("/api/robot") ||
-    normalized.startsWith("/api/rviz") ||
-    normalized.startsWith("/api/telemetry/current")
-  ) {
-    return configuredPiApiBaseUrl();
-  }
-
-  if (normalized.startsWith("/api/system/components/camera/")) {
-    return configuredJetsonApiBaseUrl();
-  }
-
-  if (
-    normalized.startsWith("/api/system/components/robot/") ||
-    normalized.startsWith("/api/system/components/lidar/") ||
-    normalized.startsWith("/api/system/components/slam/") ||
-    normalized.startsWith("/api/system/components/navigation/") ||
-    normalized.startsWith("/api/system/components/dataset/")
-  ) {
-    return configuredPiApiBaseUrl();
-  }
-
-  return undefined;
-}
-
-export function getWebSocketBaseUrl(path?: string) {
-  const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
-  if (configured && !path) return configured.replace(/\/$/, "");
-
-  const normalized = path?.startsWith("/") ? path : path ? `/${path}` : "";
   if (
     normalized.startsWith("/api/ws/telemetry") ||
     normalized.startsWith("/api/ws/map") ||
@@ -78,34 +60,60 @@ export function getWebSocketBaseUrl(path?: string) {
     normalized.startsWith("/api/ws/dataset") ||
     normalized.startsWith("/api/ws/control")
   ) {
-    const piBase = configuredPiApiBaseUrl();
-    if (piBase) {
-      return piBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/$/, "");
-    }
+    const configuredPi = configuredPiApiBaseUrl();
+    return configuredPi ? toWebSocketOrigin(configuredPi) : undefined;
   }
 
-  const apiUrl = getApiBaseUrl();
-  return apiUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+  return undefined;
 }
 
-export function resolveApiEndpoint(endpoint: string) {
-  if (/^https?:\/\//.test(endpoint)) return endpoint;
-  const directBase = resolveDirectApiBase(endpoint);
-  if (directBase) {
-    return `${directBase.replace(/\/$/, "")}${endpoint}`;
+export function getApiBaseUrl(): string {
+  const configured = configuredApiBaseUrl();
+  if (configured) return trimTrailingSlash(configured);
+
+  if (typeof window !== "undefined") {
+    if (window.location.port === "3000") {
+      return buildOrigin(window.location.protocol, window.location.hostname, DEFAULT_ROBOT_API_PORT);
+    }
+    return window.location.origin;
   }
-  return `${getApiBaseUrl()}${endpoint}`;
+
+  return `http://localhost:${DEFAULT_ROBOT_API_PORT}`;
+}
+
+export function getWebSocketBaseUrl(path?: string): string {
+  const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
+  if (!path && configured) return trimTrailingSlash(configured);
+
+  if (path) {
+    const directBase = resolveDirectWebSocketBase(path);
+    if (directBase) return directBase;
+  }
+
+  if (configured) return trimTrailingSlash(configured);
+  return toWebSocketOrigin(getApiBaseUrl());
+}
+
+export function resolveApiEndpoint(endpoint: string): string {
+  if (/^https?:\/\//.test(endpoint)) return endpoint;
+  return new URL(endpoint, `${getApiBaseUrl()}/`).toString();
+}
+
+export function resolveWebSocketEndpoint(path: string): string {
+  if (/^wss?:\/\//.test(path)) return path;
+  return new URL(resolveWebSocketPath(path), `${getWebSocketBaseUrl(path)}/`).toString();
 }
 
 export class ApiError extends Error {
   status: number;
+
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
   }
 }
 
-export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+export async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers || {});
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -126,8 +134,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   if (!response.ok) {
     let message = "An error occurred";
     try {
-      const errData = await response.json();
-      message = errData.detail || message;
+      message = getErrorDetail(await response.json()) || message;
     } catch {
       message = response.statusText;
     }

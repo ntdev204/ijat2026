@@ -17,7 +17,7 @@ AG Kit is a modular system consisting of:
 ## 🏗️ Directory Structure
 
 ```plaintext
-.agents/
+.claude/
 ├── ARCHITECTURE.md          # This file
 ├── agent/                  # 20 Specialist Agents
 ├── skills/                  # 45 Skills (with conditional loading)
@@ -248,10 +248,10 @@ Master validation scripts that orchestrate skill-level scripts.
 
 ```bash
 # Quick validation during development
-python .agents/scripts/checklist.py .
+python .claude/scripts/checklist.py .
 
 # Full verification before deployment
-python .agents/scripts/verify_all.py . --url http://localhost:3000
+python .claude/scripts/verify_all.py . --url http://localhost:3000
 ```
 
 ### What They Check
