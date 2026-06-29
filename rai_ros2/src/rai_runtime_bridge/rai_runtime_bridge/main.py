@@ -284,8 +284,17 @@ def _stop_stack(process: Optional[subprocess.Popen], component_id: str) -> dict:
     return result
 
 
+def _component_runtime_state(component_id: str, process: Optional[subprocess.Popen]) -> tuple[bool, Optional[int], bool]:
+    if process is not None and process.poll() is None:
+        return True, process.pid, True
+    matched_pids = _find_pids_by_patterns(KILL_PATTERNS.get(component_id, ()))
+    if matched_pids:
+        return True, matched_pids[0], False
+    return False, None, False
+
+
 def _component_state(component_id: str, label: str, host_device: str, action: str, process: Optional[subprocess.Popen], launch_file: str, description: str, capabilities: Optional[dict] = None) -> dict:
-    running = process is not None and process.poll() is None
+    running, pid, owned_by_bridge = _component_runtime_state(component_id, process)
     return {
         "id": component_id,
         "label": label,
@@ -293,10 +302,10 @@ def _component_state(component_id: str, label: str, host_device: str, action: st
         "action": action,
         "allowed_here": action in ALLOWED_ACTIONS,
         "running": running,
-        "pid": process.pid if running and process is not None else None,
+        "pid": pid,
         "launch_file": launch_file,
         "description": description,
-        "capabilities": capabilities or {},
+        "capabilities": {**(capabilities or {}), "owned_by_bridge": owned_by_bridge},
     }
 
 
