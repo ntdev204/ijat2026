@@ -109,7 +109,6 @@ install(
 
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch scripts DESTINATION share/${PROJECT_NAME})
-install(FILES README.md DESTINATION share/${PROJECT_NAME})
 
 ament_export_dependencies(rosidl_default_runtime)
 ament_export_include_directories(include)

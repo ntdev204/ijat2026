@@ -84,8 +84,8 @@ public:
       declare_parameter<double>("depth_center_ratio", 0.45),
       declare_parameter<double>("min_depth_m", 0.25),
       declare_parameter<double>("max_depth_m", 6.0)),
-    tracker_(loadKalmanOptions()),
     target_frame_(declare_parameter<std::string>("target_frame", "map")),
+    tracker_(loadKalmanOptions()),
     estimator_(target_frame_)
   {
     rgb_topic_ = declare_parameter<std::string>("rgb_topic", "/camera/color/image_raw");
