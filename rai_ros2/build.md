@@ -1,7 +1,7 @@
 # RAI ROS2 — Build Guide
 
-> Workspace: `~/ijat2026/rai_ros2`  
-> ROS2 distro: **Humble**  
+> Workspace: `~/ijat2026/rai_ros2`
+> ROS2 distro: **Humble**
 > Shell: run từ thư mục workspace sau khi `source /opt/ros/humble/setup.bash`
 
 ---
@@ -20,20 +20,21 @@ rai_controller               ← rai_navigation
                              ← rai_robot_navigation
                              ← rai_human_perception
                              ← rai_dataset_collection
-                             ← rai_web_api
+                             ← rai_runtime_bridge
                              ← turn_on_rai_robot
 
 rai_navigation               ← rai_robot_navigation
-                             ← rai_web_api
                              ← turn_on_rai_robot
 
-rai_robot_msg                ← rai_web_api
-                             ← turn_on_rai_robot
+rai_robot_msg                ← turn_on_rai_robot
 
 rai_slam_toolbox             ← rai_dataset_collection
                              ← turn_on_rai_robot
 
 rai_human_perception         ← rai_dataset_collection
+
+rai_runtime_bridge           ← runtime process control on Pi/Jetson
+rai_web_api                  ← hub-only website API, DB metadata, runtime bridge proxy
 
 lslidar_msgs                 ← lslidar_driver
 lslidar_driver               ← turn_on_rai_robot
@@ -62,8 +63,8 @@ turn_on_rai_robot            ← rai_dataset_collection
 
 ## 🍓 Raspberry Pi — Robot Base
 
-**Role:** Hardware driver, SLAM, navigation, web API.  
-**Không có CUDA** — không build `rai_human_perception`.
+**Role:** Hardware driver, SLAM, navigation bringup.
+**Không có CUDA** — không build `rai_human_perception` và `rai_web_api`.
 
 ```bash
 cd ~/ijat2026/rai_ros2
@@ -81,12 +82,12 @@ colcon build --symlink-install --packages-select \
   rai_controller \
   rai_navigation \
   rai_robot_msg \
+  rai_runtime_bridge \
   rai_robot_urdf \
   rai_slam_toolbox \
   turn_on_rai_robot \
   rai_robot_navigation \
-  rai_robot_keyboard \
-  rai_web_api
+  rai_robot_keyboard
 ```
 
 **Thứ tự build (colcon tự sắp xếp):**
@@ -94,14 +95,14 @@ colcon build --symlink-install --packages-select \
 2. `lslidar_driver`, `rai_planner_a_star`, `rai_planner_dijkstra`, `rai_planner_straight_line`
 3. `rai_controller`
 4. `rai_navigation`, `turn_on_rai_robot`
-5. `rai_robot_navigation`, `rai_robot_keyboard`, `rai_web_api`
+5. `rai_runtime_bridge`, `rai_robot_navigation`, `rai_robot_keyboard`
 
 ---
 
 ## ⚡ Jetson — AI / Perception
 
-**Role:** YOLO detection, depth association, Kalman tracking, dataset collection.  
-**Yêu cầu:** CUDA + TensorRT.
+**Role:** YOLO detection, depth association, Kalman tracking, dataset collection.
+**Yêu cầu:** CUDA + TensorRT. Không chạy `rai_web_api`.
 
 ```bash
 cd ~/ijat2026/rai_ros2
@@ -121,9 +122,9 @@ colcon build --symlink-install --packages-select \
   rai_robot_msg \
   rai_slam_toolbox \
   turn_on_rai_robot \
+  rai_runtime_bridge \
   rai_human_perception \
-  rai_dataset_collection \
-  rai_web_api
+  rai_dataset_collection
 ```
 
 **Thứ tự build (colcon tự sắp xếp):**
@@ -131,18 +132,31 @@ colcon build --symlink-install --packages-select \
 2. `lslidar_driver`, `rai_planner_a_star`, `rai_planner_dijkstra`, `rai_planner_straight_line`
 3. `rai_controller`
 4. `rai_navigation`, `turn_on_rai_robot`
-5. `rai_human_perception`, `rai_web_api`
+5. `rai_runtime_bridge`, `rai_human_perception`
 6. `rai_dataset_collection`
 
 ---
 
 ## 💻 Laptop — Dev / Visualization
 
-**Role:** RViz2, simulation, giám sát. Không có hardware driver.
+**Role:** Web dashboard, RViz2, monitoring. Là thiết bị DUY NHẤT chạy `rai_web_api` + PostgreSQL DB.
+`rai_web_api` không cần planner/controller/navigation để làm website API; các package ROS dưới đây chỉ cần nếu laptop dùng RViz/dev simulation.
 
 ```bash
 cd ~/ijat2026/rai_ros2
 
+colcon build --symlink-install --packages-select \
+  rai_web_api \
+  rai_robot_urdf \
+  rai_rviz2
+```
+
+**Thứ tự build (colcon tự sắp xếp):**
+1. `rai_web_api`, `rai_robot_urdf`, `rai_rviz2`
+
+Nếu laptop cần chạy simulation/navigation dev local, build thêm nhóm ROS dev:
+
+```bash
 colcon build --symlink-install --packages-select \
   rai_planner \
   rai_planner_a_star \
@@ -152,18 +166,8 @@ colcon build --symlink-install --packages-select \
   rai_controller \
   rai_navigation \
   rai_robot_msg \
-  rai_robot_urdf \
-  rai_robot_navigation \
-  rai_rviz2 \
-  rai_web_api
+  rai_robot_navigation
 ```
-
-**Thứ tự build (colcon tự sắp xếp):**
-1. `rai_planner`, `rai_controller_cca_nmpc`, `rai_robot_msg`, `rai_robot_urdf`
-2. `rai_planner_a_star`, `rai_planner_dijkstra`, `rai_planner_straight_line`
-3. `rai_controller`
-4. `rai_navigation`
-5. `rai_robot_navigation`, `rai_web_api`, `rai_rviz2`
 
 ---
 
@@ -175,22 +179,23 @@ colcon build --symlink-install --packages-select \
 | `lslidar_driver`            | ✅ | ✅     | ❌     | lslidar_msgs |
 | `serial`                    | ✅ | ✅     | ❌     | — |
 | `ackermann_msgs`            | ✅ | ✅     | ❌     | — |
-| `rai_planner`               | ✅ | ✅     | ✅     | — |
-| `rai_planner_a_star`        | ✅ | ✅     | ✅     | rai_planner |
-| `rai_planner_dijkstra`      | ✅ | ✅     | ✅     | rai_planner |
-| `rai_planner_straight_line` | ✅ | ✅     | ✅     | rai_planner |
-| `rai_controller_cca_nmpc`   | ✅ | ✅     | ✅     | — |
-| `rai_controller`            | ✅ | ✅     | ✅     | rai_controller_cca_nmpc, rai_planner_* |
-| `rai_navigation`            | ✅ | ✅     | ✅     | rai_controller |
-| `rai_robot_msg`             | ✅ | ✅     | ✅     | — |
+| `rai_planner`               | ✅ | ✅     | dev    | — |
+| `rai_planner_a_star`        | ✅ | ✅     | dev    | rai_planner |
+| `rai_planner_dijkstra`      | ✅ | ✅     | dev    | rai_planner |
+| `rai_planner_straight_line` | ✅ | ✅     | dev    | rai_planner |
+| `rai_controller_cca_nmpc`   | ✅ | ✅     | dev    | — |
+| `rai_controller`            | ✅ | ✅     | dev    | rai_controller_cca_nmpc, rai_planner_* |
+| `rai_navigation`            | ✅ | ✅     | dev    | rai_controller |
+| `rai_robot_msg`             | ✅ | ✅     | dev    | — |
 | `rai_robot_urdf`            | ✅ | ❌     | ✅     | — |
 | `rai_slam_toolbox`          | ✅ | ✅     | ❌     | — |
 | `rai_cartographer`          | ⚠️ | ❌    | ❌     | — |
 | `turn_on_rai_robot`         | ✅ | ✅     | ❌     | rai_robot_msg, rai_navigation, rai_controller, lslidar_driver, serial, ackermann_msgs, rai_slam_toolbox |
+| `rai_runtime_bridge`        | ✅ | ✅     | ❌     | rclpy, std_msgs, sensor_msgs, geometry_msgs, nav_msgs, tf2_ros, rai_controller |
 | `rai_human_perception`      | ❌ | ✅     | ❌     | rai_controller (CUDA required) |
-| `rai_robot_navigation`      | ✅ | ❌     | ✅     | rai_navigation, rai_controller |
+| `rai_robot_navigation`      | ✅ | ❌     | dev    | rai_navigation, rai_controller |
 | `rai_robot_keyboard`        | ✅ | ❌     | ❌     | — |
-| `rai_web_api`               | ✅ | ✅     | ✅     | rai_robot_msg, rai_controller, rai_navigation |
+| `rai_web_api`               | ❌ | ❌     | ✅     | FastAPI backend, DB, bridge proxy |
 | `rai_dataset_collection`    | ❌ | ✅     | ❌     | rai_controller, rai_human_perception, turn_on_rai_robot, rai_slam_toolbox |
 | `rai_rviz2`                 | ❌ | ❌     | ✅     | — |
 

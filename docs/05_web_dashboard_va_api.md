@@ -34,16 +34,12 @@ Tạo `rai_website/.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_URL=http://100.116.199.115:8080
-NEXT_PUBLIC_PI_API_URL=http://100.120.77.81:8080
-NEXT_PUBLIC_JETSON_API_URL=http://100.69.39.18:8080
 NEXT_PUBLIC_ALLOWED_DEV_ORIGINS=100.116.199.115
 ```
 
 | Biến | Ý nghĩa |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | REST API chính, thường trỏ hub |
-| `NEXT_PUBLIC_PI_API_URL` | backend cho telemetry/map/control WebSocket trên Pi |
-| `NEXT_PUBLIC_JETSON_API_URL` | backend cho camera/WebRTC nếu cần |
 | `NEXT_PUBLIC_WS_URL` | override toàn bộ websocket base nếu có proxy riêng |
 | `NEXT_PUBLIC_ALLOWED_DEV_ORIGINS` | origin dev được Next.js chấp nhận |
 
@@ -68,17 +64,17 @@ Các stream tần số cao dùng WebSocket:
 | `/api/ws/telemetry` | Pi |
 | `/api/ws/map` | Pi |
 | `/api/ws/paths` | Pi |
-| `/api/ws/dataset` | Pi |
+| `/api/ws/dataset` | Hub |
 | `/api/ws/control` | Pi |
 
-Nếu `NEXT_PUBLIC_PI_API_URL` được set, frontend sẽ dùng Pi backend cho các stream này. Nếu không set, frontend fallback về API origin.
+Frontend luôn dùng hub API origin cho các stream này. Hub API làm việc với runtime bridge ở Pi/Jetson khi cần điều khiển runtime.
 
 ## 5. Endpoint runtime chính
 
 | Endpoint | Mục đích |
 | --- | --- |
 | `GET /api/health` | kiểm tra API sống |
-| `GET /api/system/runtime` | role, label, actions, agent URLs |
+| `GET /api/system/runtime` | role, label, actions, bridge URLs |
 | `GET /api/system/components` | danh sách runtime components |
 | `POST /api/system/components/robot/start|stop` | robot base trên Pi |
 | `POST /api/system/components/lidar/start|stop` | LiDAR trên Pi |
@@ -109,11 +105,11 @@ Nếu `NEXT_PUBLIC_PI_API_URL` được set, frontend sẽ dùng Pi backend cho 
 | --- | --- |
 | `POST /api/dataset/prepare` | tạo layout dataset |
 | `GET /api/dataset/artifacts` | xem artefact sẵn có |
-| `GET /api/dataset/launch/status` | trạng thái launch stack |
-| `POST /api/dataset/launch/start|stop` | bật/tắt dataset launch stack |
-| `POST /api/dataset/start` | bắt đầu ghi run |
+| `GET /api/dataset/launch/status` | trạng thái launch stack và recorder trên Pi bridge |
+| `POST /api/dataset/launch/start|stop` | bật/tắt dataset launch stack trên Pi |
+| `POST /api/dataset/start` | tạo metadata trên hub và bắt đầu recorder qua Pi bridge |
 | `GET /api/dataset/active` | xem run đang ghi |
-| `POST /api/dataset/stop` | dừng run đang ghi |
+| `POST /api/dataset/stop` | dừng recorder trên Pi và hoàn tất metadata trên hub |
 | `POST /api/dataset/pipeline` | chạy hậu xử lý |
 | `GET /api/dataset/runs` | danh sách run |
 | `GET /api/dataset/runs/{id}/download` | tải artefact run |
@@ -123,12 +119,12 @@ Nếu `NEXT_PUBLIC_PI_API_URL` được set, frontend sẽ dùng Pi backend cho 
 Dùng browser devtools hoặc công cụ WebSocket bất kỳ để kiểm tra:
 
 ```text
-ws://100.120.77.81:8080/api/ws/telemetry
-ws://100.120.77.81:8080/api/ws/map
-ws://100.120.77.81:8080/api/ws/control
+ws://100.116.199.115:8080/api/ws/telemetry
+ws://100.116.199.115:8080/api/ws/map
+ws://100.116.199.115:8080/api/ws/control
 ```
 
-Nếu dashboard hiện disconnected nhưng REST API vẫn OK, kiểm tra `NEXT_PUBLIC_PI_API_URL` và CORS/API access giữa browser và Pi.
+Nếu dashboard hiện disconnected nhưng REST API vẫn OK, kiểm tra `NEXT_PUBLIC_API_URL`, CORS trên hub API và ROS 2 DDS giữa hub với Pi/Jetson.
 
 ## 9. CORS backend
 

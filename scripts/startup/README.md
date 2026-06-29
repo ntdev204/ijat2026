@@ -1,15 +1,15 @@
 # Startup scripts
 
-Thư mục này chứa scripts và systemd service để chạy `rai_web_api` theo role thiết bị.
+Thư mục này chứa scripts và systemd service để chạy `rai_web_api` trên laptop và `rai_runtime_bridge` trên Pi/Jetson.
 
 ## Scripts
 
 | File                     | Role                                 |
 | ------------------------ | ------------------------------------ |
 | `common_env.sh`          | Thiết lập ROS 2 và network env chung |
-| `laptop_startup.sh`      | Hub/server API                       |
-| `pi_startup.sh`          | Raspberry Pi API agent               |
-| `jetson_startup.sh`      | Jetson API agent                     |
+| `laptop_startup.sh`      | Hub/server `rai_web_api`             |
+| `pi_startup.sh`          | Raspberry Pi `rai_runtime_bridge`    |
+| `jetson_startup.sh`      | Jetson `rai_runtime_bridge`          |
 | `pi_startup.service`     | systemd service cho Pi               |
 | `jetson_startup.service` | systemd service cho Jetson           |
 

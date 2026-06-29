@@ -8,10 +8,10 @@ Tạo `.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_URL=http://100.116.199.115:8080
-NEXT_PUBLIC_PI_API_URL=http://100.120.77.81:8080
-NEXT_PUBLIC_JETSON_API_URL=http://100.69.39.18:8080
 NEXT_PUBLIC_ALLOWED_DEV_ORIGINS=100.116.199.115
 ```
+
+Frontend chỉ gọi hub API. Hub `rai_web_api` tự relay REST/WebSocket xuống `rai_runtime_bridge` trên Pi/Jetson theo `RAI_PI_BRIDGE_URL` và `RAI_JETSON_BRIDGE_URL`.
 
 ## Chạy development
 

@@ -24,7 +24,9 @@ Các topic quan trọng:
 
 ## 2. Cấu trúc thư mục dataset
 
-Mặc định `RAI_DATASET_PATH` là `~/ijat2026/dataset` trong `rai_web_api`.
+Mặc định `RAI_DATASET_PATH` là `~/ijat2026/dataset`. Metadata/DB do `rai_web_api` trên hub quản lý, còn process `ros2 bag record` chạy qua `rai_runtime_bridge` trên Pi.
+
+Trong robot thật, nên mount/sync `RAI_DATASET_PATH` để hub và Pi cùng nhìn thấy cùng một cây thư mục. Nếu không dùng shared path, rosbag sẽ được ghi trên Pi theo path hub gửi xuống, còn bước zip/download trên hub cần đồng bộ dữ liệu về sau run.
 
 ```text
 dataset/
@@ -215,6 +217,7 @@ Một run dùng được khi:
 
 - metadata có scenario/controller/environment/run_id đúng;
 - rosbag2 tồn tại và có kích thước tăng trong lúc ghi;
+- `GET /api/dataset/launch/status` có `record.running=true` trong lúc ghi;
 - `/canmpc/context` có mẫu $\phi_h$, $d_h$, $d_{\mathrm{safe}}$;
 - `/canmpc/solver_stats` có solve time;
 - `metadata/run_index.csv` có dòng tương ứng;

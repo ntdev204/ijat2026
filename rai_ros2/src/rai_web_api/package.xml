@@ -3,29 +3,17 @@
 <package format="3">
   <name>rai_web_api</name>
   <version>1.0.0</version>
-  <description>FastAPI Web API for Rai Robot Realtime Monitoring and Control</description>
+  <description>Hub-only FastAPI facade for the RAI website, database metadata, and runtime bridge proxying</description>
   <maintainer email="thientn204@utc.edu.vn">Nguyen Ngoc Thien</maintainer>
   <license>MIT</license>
-
-  <depend>rclpy</depend>
-  <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>rai_robot_msg</depend>
-  <depend>rai_controller</depend>
-  <depend>rai_navigation</depend>
 
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <exec_depend>python3-sqlalchemy</exec_depend>
   <exec_depend>python3-asyncpg</exec_depend>
   <exec_depend>python3-aiosqlite</exec_depend>
-  <exec_depend>python3-aiortc</exec_depend>
-  <exec_depend>python3-av</exec_depend>
-  <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
-  <exec_depend>python3-zmq</exec_depend>
+  <exec_depend>python3-websockets</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

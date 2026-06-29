@@ -16,6 +16,7 @@ export ROS_LOCALHOST_ONLY=0
 ```
 
 Trên hub cần có Node.js dependencies cho `rai_website` và Docker/Compose cho PostgreSQL.
+Nếu ghi dataset robot thật, cấu hình `RAI_DATASET_PATH` sao cho hub và Pi cùng truy cập được hoặc có bước sync thư mục run từ Pi về hub sau khi ghi.
 
 ## 2. Bật PostgreSQL trên hub
 
@@ -54,9 +55,10 @@ export RAI_API_HOST=0.0.0.0
 export RAI_API_PORT=8080
 export RAI_SERVER_HOST=100.116.199.115
 export RAI_LAN_HOST=$RAI_SERVER_HOST
-export RAI_PI_AGENT_URL=http://100.120.77.81:8080
-export RAI_JETSON_AGENT_URL=http://100.69.39.18:8080
+export RAI_PI_BRIDGE_URL=http://100.120.77.81:8090
+export RAI_JETSON_BRIDGE_URL=http://100.69.39.18:8090
 export RAI_API_CORS=http://localhost:3000,http://${RAI_SERVER_HOST}:3000
+export RAI_DATASET_PATH=${RAI_DATASET_PATH:-$HOME/ijat2026/dataset}
 
 ros2 launch rai_web_api web_api.launch.py host:=${RAI_API_HOST} lan_host:=${RAI_LAN_HOST} port:=${RAI_API_PORT}
 ```
@@ -75,8 +77,6 @@ cd ~/ijat2026/rai_website
 npm install
 cat > .env.local <<'EOF'
 NEXT_PUBLIC_API_URL=http://100.116.199.115:8080
-NEXT_PUBLIC_PI_API_URL=http://100.120.77.81:8080
-NEXT_PUBLIC_JETSON_API_URL=http://100.69.39.18:8080
 NEXT_PUBLIC_ALLOWED_DEV_ORIGINS=100.116.199.115
 EOF
 npm run dev
@@ -95,7 +95,7 @@ npm run build
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-## 5. Chạy Pi API agent
+## 5. Chạy Pi runtime bridge
 
 ```bash
 cd ~/ijat2026
@@ -108,12 +108,13 @@ export ROS_LOCALHOST_ONLY=0
 
 export RAI_DEVICE_ROLE=pi
 export RAI_DEVICE_LABEL=raspberry_pi_4
-export RAI_API_HOST=0.0.0.0
-export RAI_API_PORT=8080
+export RAI_BRIDGE_HOST=0.0.0.0
+export RAI_BRIDGE_PORT=8090
 export RAI_SERVER_HOST=100.116.199.115
 export RAI_LAN_HOST=$RAI_SERVER_HOST
+export RAI_DATASET_PATH=${RAI_DATASET_PATH:-$HOME/ijat2026/dataset}
 
-ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 lan_host:=${RAI_LAN_HOST} port:=8080
+ros2 launch rai_runtime_bridge bridge.launch.py role:=pi host:=${RAI_BRIDGE_HOST} port:=${RAI_BRIDGE_PORT}
 ```
 
 Pi chịu trách nhiệm launch:
@@ -125,7 +126,7 @@ Pi chịu trách nhiệm launch:
 - map save/load;
 - dataset launch/recording.
 
-## 6. Chạy Jetson API agent
+## 6. Chạy Jetson runtime bridge
 
 ```bash
 cd ~/ijat2026
@@ -138,12 +139,12 @@ export ROS_LOCALHOST_ONLY=0
 
 export RAI_DEVICE_ROLE=jetson
 export RAI_DEVICE_LABEL=jetson_orin_nano
-export RAI_API_HOST=0.0.0.0
-export RAI_API_PORT=8080
+export RAI_BRIDGE_HOST=0.0.0.0
+export RAI_BRIDGE_PORT=8090
 export RAI_SERVER_HOST=100.116.199.115
 export RAI_LAN_HOST=$RAI_SERVER_HOST
 
-ros2 launch rai_web_api web_api.launch.py host:=0.0.0.0 lan_host:=${RAI_LAN_HOST} port:=8080
+ros2 launch rai_runtime_bridge bridge.launch.py role:=jetson host:=${RAI_BRIDGE_HOST} port:=${RAI_BRIDGE_PORT}
 ```
 
 Jetson chịu trách nhiệm camera/perception runtime.
@@ -213,6 +214,6 @@ curl http://100.116.199.115:8080/api/rai-navigation/config
 Nếu gọi trực tiếp Pi/Jetson:
 
 ```bash
-curl http://100.120.77.81:8080/api/health
-curl http://100.69.39.18:8080/api/health
+curl http://100.120.77.81:8090/api/health
+curl http://100.69.39.18:8090/api/health
 ```

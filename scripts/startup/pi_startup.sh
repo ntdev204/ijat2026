@@ -13,7 +13,7 @@ export RAI_DEVICE_LABEL=${RAI_DEVICE_LABEL:-raspberry_pi_4}
 
 sleep 2
 
-ros2 launch rai_web_api web_api.launch.py \
-  host:=${RAI_API_HOST} \
-  lan_host:=${RAI_LAN_HOST} \
-  port:=${RAI_API_PORT}
+ros2 launch rai_runtime_bridge bridge.launch.py \
+  role:=${RAI_DEVICE_ROLE} \
+  host:=${RAI_BRIDGE_HOST} \
+  port:=${RAI_BRIDGE_PORT}

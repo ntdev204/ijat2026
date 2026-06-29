@@ -33,32 +33,32 @@ Nếu vẫn lỗi:
 - đảm bảo đã source đúng `install/setup.bash`;
 - không chạy nhiều domain ROS 2 khác nhau.
 
-## 2. API hub không gọi được Pi/Jetson
+## 2. API hub không gọi được runtime bridge Pi/Jetson
 
 Triệu chứng:
 
 - `/api/system/components` thiếu component từ Pi/Jetson.
-- Start robot/camera từ dashboard trả lỗi không reach device API.
+- Start robot/camera từ dashboard trả lỗi không reach runtime bridge.
 
 Kiểm tra từ hub:
 
 ```bash
-curl http://100.120.77.81:8080/api/health
-curl http://100.69.39.18:8080/api/health
+curl http://100.120.77.81:8090/api/health
+curl http://100.69.39.18:8090/api/health
 ```
 
 Kiểm tra biến môi trường hub:
 
 ```bash
-echo $RAI_PI_AGENT_URL
-echo $RAI_JETSON_AGENT_URL
+echo $RAI_PI_BRIDGE_URL
+echo $RAI_JETSON_BRIDGE_URL
 ```
 
 Giá trị đúng theo cấu hình mặc định:
 
 ```bash
-RAI_PI_AGENT_URL=http://100.120.77.81:8080
-RAI_JETSON_AGENT_URL=http://100.69.39.18:8080
+RAI_PI_BRIDGE_URL=http://100.120.77.81:8090
+RAI_JETSON_BRIDGE_URL=http://100.69.39.18:8090
 ```
 
 ## 3. Dashboard bị CORS
@@ -87,14 +87,12 @@ Kiểm tra `.env.local` của `rai_website`:
 
 ```bash
 NEXT_PUBLIC_API_URL=http://100.116.199.115:8080
-NEXT_PUBLIC_PI_API_URL=http://100.120.77.81:8080
-NEXT_PUBLIC_JETSON_API_URL=http://100.69.39.18:8080
 ```
 
 Kiểm tra trực tiếp từ browser/máy vận hành:
 
 ```text
-ws://100.120.77.81:8080/api/ws/telemetry
+ws://100.116.199.115:8080/api/ws/telemetry
 ```
 
 Nếu dùng reverse proxy riêng cho WebSocket, set `NEXT_PUBLIC_WS_URL`.
@@ -121,7 +119,7 @@ Lỗi thường gặp:
 | --- | --- |
 | `setup.bash: No such file` | kiểm tra `ROS_SETUP_PATH`, `RAI_ROS_SETUP_PATH` trong `common_env.sh` |
 | `permission denied` | `chmod +x scripts/startup/*.sh` |
-| API bind fail | kiểm tra port `8080` đã bị process khác chiếm chưa |
+| API/bridge bind fail | kiểm tra port `8080` trên hub hoặc `8090` trên Pi/Jetson đã bị process khác chiếm chưa |
 | node crash loop | đọc log journal, chạy script thủ công để thấy stacktrace |
 
 ## 6. PostgreSQL không lên
@@ -154,6 +152,7 @@ Kiểm tra:
 ```bash
 curl http://100.116.199.115:8080/api/dataset/active
 curl http://100.116.199.115:8080/api/dataset/launch/status
+curl http://100.120.77.81:8090/api/dataset/record/status
 ```
 
 Dừng run đang active:
@@ -168,7 +167,7 @@ Dừng launch stack:
 curl -X POST http://100.116.199.115:8080/api/dataset/launch/stop
 ```
 
-Nếu vẫn lỗi, kiểm tra process `ros2 bag` hoặc `dataset_collector` trên Pi.
+Nếu vẫn lỗi, kiểm tra process `ros2 bag` hoặc `dataset_collector` trên Pi. Nếu hub báo download/zip lỗi sau khi record thành công, kiểm tra `RAI_DATASET_PATH` có phải shared path giữa hub và Pi không, hoặc đồng bộ thư mục run từ Pi về hub trước khi tải artefact.
 
 ## 8. Dataset thiếu topic
 
@@ -233,11 +232,11 @@ Nếu dashboard gửi được `/cmd_vel_web` nhưng robot không chạy:
 
 ## 11. Camera/Jetson không hoạt động
 
-Kiểm tra Jetson API:
+Kiểm tra Jetson runtime bridge:
 
 ```bash
-curl http://100.69.39.18:8080/api/health
-curl http://100.69.39.18:8080/api/system/components
+curl http://100.69.39.18:8090/api/health
+curl http://100.69.39.18:8090/api/system/components
 ```
 
 Kiểm tra camera topics:
@@ -256,7 +255,7 @@ Restart theo thứ tự này nếu hệ thống bị trạng thái lẫn lộn:
 2. Stop dataset launch stack.
 3. Stop navigation/SLAM.
 4. Stop robot base/LiDAR/camera.
-5. Restart Pi/Jetson API agents.
+5. Restart Pi/Jetson runtime bridge.
 6. Restart hub API.
 7. Restart website.
 8. Refresh dashboard.

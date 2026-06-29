@@ -8,14 +8,6 @@ function configuredApiBaseUrl(): string | undefined {
   return process.env.NEXT_PUBLIC_API_URL?.trim();
 }
 
-function configuredPiApiBaseUrl(): string | undefined {
-  return process.env.NEXT_PUBLIC_PI_API_URL?.trim();
-}
-
-function configuredJetsonApiBaseUrl(): string | undefined {
-  return process.env.NEXT_PUBLIC_JETSON_API_URL?.trim();
-}
-
 function buildOrigin(protocol: string, hostname: string, port?: string): string {
   return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
 }
@@ -45,28 +37,6 @@ function resolveWebSocketPath(path: string): string {
   return path;
 }
 
-function resolveDirectWebSocketBase(path: string): string | undefined {
-  const normalized = resolveWebSocketPath(path);
-
-  if (normalized === "/api/webrtc/offer") {
-    const configuredJetson = configuredJetsonApiBaseUrl();
-    return configuredJetson ? toWebSocketOrigin(configuredJetson) : undefined;
-  }
-
-  if (
-    normalized.startsWith("/api/ws/telemetry") ||
-    normalized.startsWith("/api/ws/map") ||
-    normalized.startsWith("/api/ws/paths") ||
-    normalized.startsWith("/api/ws/dataset") ||
-    normalized.startsWith("/api/ws/control")
-  ) {
-    const configuredPi = configuredPiApiBaseUrl();
-    return configuredPi ? toWebSocketOrigin(configuredPi) : undefined;
-  }
-
-  return undefined;
-}
-
 export function getApiBaseUrl(): string {
   const configured = configuredApiBaseUrl();
   if (configured) return trimTrailingSlash(configured);
@@ -84,11 +54,6 @@ export function getApiBaseUrl(): string {
 export function getWebSocketBaseUrl(path?: string): string {
   const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
   if (!path && configured) return trimTrailingSlash(configured);
-
-  if (path) {
-    const directBase = resolveDirectWebSocketBase(path);
-    if (directBase) return directBase;
-  }
 
   if (configured) return trimTrailingSlash(configured);
   return toWebSocketOrigin(getApiBaseUrl());
