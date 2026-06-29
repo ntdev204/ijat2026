@@ -47,11 +47,6 @@ install(
   DESTINATION include
 )
 
-install(
-  DIRECTORY docs
-  DESTINATION share/${PROJECT_NAME}
-)
-
 ament_export_targets(rai_plannerTargets HAS_LIBRARY_TARGET)
 ament_export_dependencies(geometry_msgs nav_msgs rclcpp tf2 tf2_geometry_msgs)
 ament_export_include_directories(include)

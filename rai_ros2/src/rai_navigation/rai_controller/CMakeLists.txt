@@ -93,7 +93,7 @@ install(
 )
 
 install(
-  DIRECTORY config docs launch
+  DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
 
