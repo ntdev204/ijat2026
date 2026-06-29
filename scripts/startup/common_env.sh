@@ -1,14 +1,22 @@
 #!/bin/bash
 
+RAI_STARTUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RAI_REPO_ROOT="$(cd "${RAI_STARTUP_DIR}/../.." && pwd)"
+
 safe_source() {
+  if [ ! -f "$1" ]; then
+    echo "Missing setup file: $1" >&2
+    return 1
+  fi
   set +u
   source "$1"
   set -u
 }
 
 setup_rai_ros_env() {
+  export RAI_WORKSPACE_ROOT=${RAI_WORKSPACE_ROOT:-$RAI_REPO_ROOT}
   safe_source "${ROS_SETUP_PATH:-/opt/ros/humble/setup.bash}"
-  safe_source "${RAI_ROS_SETUP_PATH:-/home/rai/ijat2026/rai_ros2/install/setup.bash}"
+  safe_source "${RAI_ROS_SETUP_PATH:-${RAI_WORKSPACE_ROOT}/rai_ros2/install/setup.bash}"
 
   export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-30}
   export RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
