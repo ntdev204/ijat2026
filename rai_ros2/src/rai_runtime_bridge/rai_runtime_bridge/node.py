@@ -573,7 +573,7 @@ class WebBridgeNode(Node):
         """Gửi lệnh điều khiển xe (Twist) với dead zone filtering."""
         magnitude = math.sqrt(vx * vx + vy * vy + wz * wz)
         if magnitude < 0.05:
-            self.get_logger().debug("Dropping cmd_vel below dead zone threshold: (%.3f, %.3f, %.3f)", vx, vy, wz)
+            self.get_logger().debug(f"Dropping cmd_vel below dead zone threshold: ({vx:.3f}, {vy:.3f}, {wz:.3f})")
             return
         msg = Twist()
         msg.linear.x = vx
