@@ -624,7 +624,6 @@ async def cancel_nav_goal() -> dict:
     _require_action("navigation")
     node = _require_control_node()
     node.cancel_nav_goal()
-    node.publish_cmd_vel(0.0, 0.0, 0.0)
     return {"success": True}
 
 
@@ -738,7 +737,9 @@ async def control_ws(websocket: WebSocket):
             node.publish_cmd_vel(command.linear_x, command.linear_y, command.angular_z)
             await websocket.send_json({"success": True})
     except WebSocketDisconnect:
-        node.publish_cmd_vel(0.0, 0.0, 0.0)
+        for _ in range(5):
+            node.publish_cmd_vel(0.0, 0.0, 0.0)
+            await asyncio.sleep(0.05)
 
 
 @app.get("/api/rai-navigation/options")
@@ -746,7 +747,6 @@ async def navigation_options() -> dict:
     return {
         "local_planners": [
             {"id": "CCA_NMPC", "label": "CCA-NMPC", "plugin": "rai_controller_cca_nmpc", "native": True},
-            {"id": "NMPC", "label": "NMPC", "plugin": "rai_controller_cca_nmpc", "native": True},
         ],
         "global_planners": [
             {"id": "A_STAR", "label": "A*", "plugin": "rai_planner_a_star"},
@@ -764,6 +764,7 @@ async def get_navigation_config() -> dict:
         "running": running,
         "controller_server_enabled": True,
         "rai_controller_running": running,
+        "selected_map_id": running_map_id,
     }
 
 

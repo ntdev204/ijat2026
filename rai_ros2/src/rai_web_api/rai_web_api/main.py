@@ -170,6 +170,8 @@ RUNTIME_SETTING_CAMERA_DEPTH = "system.camera.enable_depth"
 ROLE_ALLOWED_ACTIONS = {
     "hub": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar", "camera"},
     "laptop": {"teleop", "navigation", "slam", "dataset", "maps", "simulation", "system", "hardware", "lidar", "camera"},
+    "pi": {"hardware", "lidar", "slam", "navigation", "dataset", "system"},
+    "jetson": {"camera", "perception", "system"},
 }
 ALLOWED_ACTIONS = ROLE_ALLOWED_ACTIONS.get(DEVICE_ROLE, set())
 PI_BRIDGE_URL = os.getenv("RAI_PI_BRIDGE_URL", "").strip().rstrip("/")
@@ -780,11 +782,19 @@ async def _relay_websocket(websocket: WebSocket, device: str, endpoint: str) -> 
     try:
         import websockets
     except ImportError as exc:
-        await websocket.close(code=1011, reason="websockets package is not available")
-        raise HTTPException(status_code=500, detail="websockets package is required for bridge relay") from exc
+        logger.error("websockets package is not available: %s", exc)
+        try:
+            await websocket.close(code=1011, reason="websockets package is not available")
+        except Exception:
+            pass
+        return
 
     bridge_url = _bridge_ws_url(device, endpoint)
-    await websocket.accept()
+    try:
+        await websocket.accept()
+    except Exception as exc:
+        logger.warning("Failed to accept websocket from client for relay to %s: %s", device, exc)
+        return
     try:
         async with websockets.connect(bridge_url) as bridge_ws:
             async def client_to_bridge() -> None:
@@ -827,8 +837,14 @@ async def _runtime_telemetry() -> dict:
     try:
         payload = await _agent_request("GET", "pi", "/api/telemetry/current")
         telemetry = payload.get("telemetry", {})
-        return telemetry if isinstance(telemetry, dict) else {}
+        if not isinstance(telemetry, dict):
+            logger.warning("Unexpected telemetry payload type from pi bridge: %s", type(telemetry))
+            return {}
+        return telemetry
     except HTTPException:
+        return {}
+    except Exception as exc:
+        logger.warning("Cannot fetch runtime telemetry from pi bridge: %s", exc)
         return {}
 
 

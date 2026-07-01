@@ -94,7 +94,7 @@ public:
     odom_topic_ = declare_parameter<std::string>("odom_topic", "/odom");
     humans_topic_ = declare_parameter<std::string>("humans_topic", "/cca_nmpc/humans");
     controller_humans_topic_ = declare_parameter<std::string>("controller_humans_topic", "/canmpc/humans");
-    context_topic_ = declare_parameter<std::string>("context_input_topic", "/cca_nmpc/context_input");
+    context_topic_ = declare_parameter<std::string>("context_input_topic", "/canmpc/context");
     debug_image_topic_ = declare_parameter<std::string>("debug_image_topic", "/perception/debug/image");
     debug_depth_topic_ = declare_parameter<std::string>("debug_depth_topic", "/perception/debug/depth");
     debug_tracks_topic_ = declare_parameter<std::string>("debug_tracks_topic", "/perception/debug/tracks");

@@ -120,7 +120,7 @@ class DatasetRun(Base):
     detection_precision = Column(Float, nullable=True)
     detection_recall = Column(Float, nullable=True)
     tracking_rate = Column(Float, nullable=True)
-    id_switches = Column(Float, nullable=True)
+    id_switches = Column(Integer, nullable=True)
     start_voltage = Column(Float, nullable=True)
     end_voltage = Column(Float, nullable=True)
     min_voltage = Column(Float, nullable=True)

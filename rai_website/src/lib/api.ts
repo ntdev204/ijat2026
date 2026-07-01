@@ -53,10 +53,25 @@ export function getApiBaseUrl(): string {
 
 export function getWebSocketBaseUrl(path?: string): string {
   const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
-  if (!path && configured) return trimTrailingSlash(configured);
-
-  if (configured) return trimTrailingSlash(configured);
-  return toWebSocketOrigin(getApiBaseUrl());
+  if (configured) {
+    const url = trimTrailingSlash(configured);
+    if (path) {
+      const urlObj = new URL(url);
+      return trimTrailingSlash(
+        urlObj.protocol === "http:"
+          ? `ws://${urlObj.host}${path}`
+          : urlObj.protocol === "https:"
+          ? `wss://${urlObj.host}${path}`
+          : `${url}${path}`
+      );
+    }
+    return url;
+  }
+  const base = toWebSocketOrigin(getApiBaseUrl());
+  if (path) {
+    return trimTrailingSlash(`${base}${path}`);
+  }
+  return base;
 }
 
 export function resolveApiEndpoint(endpoint: string): string {

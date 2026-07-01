@@ -220,6 +220,12 @@ std::vector<geometry_msgs::msg::PoseStamped> CcanmpcCore::resampleReference(
     arclength.push_back(arclength.back() + distance2d(local_path.poses[i - 1], local_path.poses[i]));
   }
 
+  if (arclength.empty() || arclength.back() < 1e-6) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000,
+      "Reference path is degenerate (zero or near-zero length); skipping reference generation.");
+    return reference;
+  }
+
   const double ds = std::max(0.01, v_ref * params_.sample_time);
   for (int step = 0; step <= params_.horizon_steps; ++step) {
     const double target_s = ds * static_cast<double>(step);
@@ -596,10 +602,8 @@ SolveResult CcanmpcCore::solve(
           const double step_phi = step_context.phi_h;
           const ContextState step_adaptive =
             mergeExternalLimits(computeAdaptiveParameters(step_phi), context);
-
           score += scoreTrackingError(x, y, yaw, ref, step_phi);
           score += params_.r_vx * vx * vx + params_.r_vy * vy * vy + params_.r_omega * omega * omega;
-
           bool velocity_constraint_violated = false;
           const double velocity_constraint_penalty = adaptiveVelocityConstraintPenalty(
             vx, vy, omega, step_adaptive, velocity_constraint_violated);

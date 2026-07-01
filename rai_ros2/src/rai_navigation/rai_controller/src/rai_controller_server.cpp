@@ -1094,7 +1094,6 @@ private:
           get_logger(), *get_clock(), 2000,
           "Laser transform %s -> %s failed: %s",
           scan_frame.c_str(), control_frame_.c_str(), ex.what());
-        return;
       }
     }
 

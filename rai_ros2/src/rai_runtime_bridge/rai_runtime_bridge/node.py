@@ -31,12 +31,11 @@ class WebBridgeNode(Node):
         self.lock = threading.Lock()
         self.cmd_vel_topic = self.declare_parameter("cmd_vel_topic", "/cmd_vel_web").value
         self.map_topic = self.declare_parameter("map_topic", "/map").value
-        self.global_path_topic = self.declare_parameter("global_path_topic", "/rai_navigation/global_path").value
+        self.control_frame = self.declare_parameter("control_frame", "base_footprint").value
         self.local_path_topic = self.declare_parameter("local_path_topic", "/canmpc/predicted_trajectory").value
         self.odom_topics = ["/odom_combined", "/odom"]
-        self.context_input_topics = ["/human_perception/context_input", "/cca_nmpc/context_input"]
+        self.context_input_topics = ["/human_perception/context_input", "/canmpc/context"]
 
-        
         self.telemetry = {
             "odom": {
                 "x": 0.0,
@@ -143,8 +142,9 @@ class WebBridgeNode(Node):
     def ensure_telemetry_subscriptions(self):
         """Ensure realtime telemetry topics are subscribed for REST polling."""
         with self.lock:
-            if self.active_telemetry_clients == 0:
-                self.active_telemetry_clients = 1
+            was_zero = self.active_telemetry_clients == 0
+            self.active_telemetry_clients += 1
+            if was_zero:
                 self._activate_telemetry_subscriptions()
 
     def register_telemetry_client(self):
@@ -516,15 +516,17 @@ class WebBridgeNode(Node):
 
     def update_map_pose(self):
         try:
-            transform = self.tf_buffer.lookup_transform('map', 'base_footprint', rclpy.time.Time())
+            transform = self.tf_buffer.lookup_transform('map', self.control_frame, rclpy.time.Time())
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as exc:
             self.get_logger().debug(f"Map pose TF unavailable: {exc}")
+            self._check_pending_goal_timeout()
             return
 
         q = transform.transform.rotation
         siny_cosp = 2 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
         yaw = round(math.atan2(siny_cosp, cosy_cosp), 3)
+        self._check_pending_goal_timeout()
         with self.lock:
             self.map_pose_available = True
             self.telemetry["map_pose"] = {
@@ -532,65 +534,52 @@ class WebBridgeNode(Node):
                 "y": round(transform.transform.translation.y, 3),
                 "yaw": yaw,
             }
-        self._maybe_dispatch_pending_rai_goal()
+            self._maybe_dispatch_pending_rai_goal_locked()
 
-    def _maybe_dispatch_pending_rai_goal(self):
-        with self.lock:
-            pending = dict(self.pending_nav_goal) if self.pending_nav_goal else None
-            current_pose = dict(self.telemetry.get("map_pose", {}))
+    def _maybe_dispatch_pending_rai_goal_locked(self):
+        pending = dict(self.pending_nav_goal) if self.pending_nav_goal else None
+        current_pose = dict(self.telemetry.get("map_pose", {}))
         if pending is None or pending.get("mode") != "rai_navigation":
             return
-
         distance = math.hypot(
             float(pending.get("start_x", 0.0)) - float(current_pose.get("x", 0.0) or 0.0),
             float(pending.get("start_y", 0.0)) - float(current_pose.get("y", 0.0) or 0.0),
         )
         if distance > float(pending.get("start_tolerance", 0.25)):
             return
+        self.pending_nav_goal = None
+        goal_x = pending["x"]
+        goal_y = pending["y"]
+        goal_yaw = pending.get("yaw", 0.0)
+        self.send_cca_nmpc_goal(goal_x, goal_y, goal_yaw)
 
+    def _check_pending_goal_timeout(self):
+        """Clear pending goal if it has been waiting too long (TF unavailable)."""
         with self.lock:
-            self.pending_nav_goal = None
-        self.send_cca_nmpc_goal(pending["x"], pending["y"], pending.get("yaw", 0.0))
+            pending = self.pending_nav_goal
+            if pending is not None:
+                queued_at = pending.get("queued_at", 0.0)
+                if queued_at > 0.0 and (time.time() - queued_at) > 30.0:
+                    self.get_logger().warning(
+                        f"Pending nav goal timed out after 30s (TF unavailable). Clearing."
+                    )
+                    self.pending_nav_goal = None
 
-
-    
+    def _maybe_dispatch_pending_rai_goal(self):
+        with self.lock:
+            self._maybe_dispatch_pending_rai_goal_locked()
 
     def publish_cmd_vel(self, vx: float, vy: float, wz: float):
-        """Gửi lệnh điều khiển xe (Twist)"""
+        """Gửi lệnh điều khiển xe (Twist) với dead zone filtering."""
+        magnitude = math.sqrt(vx * vx + vy * vy + wz * wz)
+        if magnitude < 0.05:
+            self.get_logger().debug("Dropping cmd_vel below dead zone threshold: (%.3f, %.3f, %.3f)", vx, vy, wz)
+            return
         msg = Twist()
         msg.linear.x = vx
         msg.linear.y = vy
         msg.angular.z = wz
         self.cmd_vel_pub.publish(msg)
-
-    def publish_initial_pose(self, x: float, y: float, yaw: float, set_home: bool = False):
-        """Đặt vị trí khởi tạo trên map cho localization/navigation."""
-        msg = PoseWithCovarianceStamped()
-        msg.header.frame_id = 'map'
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
-        qz, qw = self._yaw_to_quaternion(yaw)
-        msg.pose.pose.orientation.z = qz
-        msg.pose.pose.orientation.w = qw
-        msg.pose.covariance[0] = 0.25
-        msg.pose.covariance[7] = 0.25
-        msg.pose.covariance[35] = 0.068
-        self.initial_pose_pub.publish(msg)
-        pose = {"x": round(x, 3), "y": round(y, 3), "yaw": round(yaw, 3)}
-        with self.lock:
-            self.initial_pose = pose
-            if set_home or self.home_pose is None:
-                self.home_pose = dict(pose)
-        self.get_logger().info(f"Published initial pose: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
-        return pose
-
-    def set_home_pose(self, x: float, y: float, yaw: float):
-        pose = {"x": round(x, 3), "y": round(y, 3), "yaw": round(yaw, 3)}
-        with self.lock:
-            self.home_pose = pose
-        self.get_logger().info(f"Updated home pose: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
-        return pose
 
     def capture_current_pose_as_anchor(self, prefer_map: bool = True, set_home: bool = True):
         with self.lock:
@@ -652,7 +641,9 @@ class WebBridgeNode(Node):
         start_x = float(start_pose["x"])
         start_y = float(start_pose["y"])
         distance_to_start = math.hypot(start_x - current_x, start_y - current_y)
-        self.pending_nav_goal = None
+
+        with self.lock:
+            self.pending_nav_goal = None
 
         if distance_to_start <= start_tolerance:
             return self.send_cca_nmpc_goal(
@@ -661,7 +652,7 @@ class WebBridgeNode(Node):
                 float(goal_pose.get("yaw", 0.0)),
             )
 
-        self.pending_nav_goal = {
+        pending = {
             "x": float(goal_pose["x"]),
             "y": float(goal_pose["y"]),
             "yaw": float(goal_pose.get("yaw", 0.0)),
@@ -669,7 +660,10 @@ class WebBridgeNode(Node):
             "start_x": start_x,
             "start_y": start_y,
             "start_tolerance": start_tolerance,
+            "queued_at": time.time(),
         }
+        with self.lock:
+            self.pending_nav_goal = pending
         return self.send_cca_nmpc_goal(start_x, start_y, float(start_pose.get("yaw", 0.0)))
 
     def send_nav_route(self, start_pose: dict, goal_pose: dict, start_tolerance: float = 0.25):
@@ -686,8 +680,9 @@ class WebBridgeNode(Node):
 
     def cancel_nav_goal(self):
         """Cancel pending RAI navigation route chaining and the active controller goal."""
-        self.pending_nav_goal = None
-        self.current_nav_goal_handle = None
+        with self.lock:
+            self.pending_nav_goal = None
+            self.current_nav_goal_handle = None
         self.rai_cancel_pub.publish(Empty())
 
     def _yaw_to_quaternion(self, yaw: float):
