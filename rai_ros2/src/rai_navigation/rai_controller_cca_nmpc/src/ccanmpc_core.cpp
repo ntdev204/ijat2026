@@ -221,8 +221,7 @@ std::vector<geometry_msgs::msg::PoseStamped> CcanmpcCore::resampleReference(
   }
 
   if (arclength.empty() || arclength.back() < 1e-6) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000,
-      "Reference path is degenerate (zero or near-zero length); skipping reference generation.");
+    std::cerr << "[ccanmpc] Warning: reference path is degenerate (zero or near-zero length); skipping reference generation." << std::endl;
     return reference;
   }
 
