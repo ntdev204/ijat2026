@@ -7,6 +7,7 @@ import os
 import signal
 import shlex
 import shutil
+import socket
 import subprocess
 import time
 import urllib.error
@@ -732,7 +733,7 @@ def _agent_request_sync(method: str, device: str, endpoint: str, payload: Option
 
     parsed_base = urllib.parse.urlparse(base_url)
     if parsed_base.scheme not in {"http", "https"} or not parsed_base.netloc:
-        raise HTTPException(status_code=503, detail=f"Runtime bridge URL for device '{device}' is invalid")
+        raise HTTPException(status_code=503, detail=f"Runtime bridge URL for device '{device}' is not configured")
 
     body = None
     if payload is not None:
@@ -743,12 +744,28 @@ def _agent_request_sync(method: str, device: str, endpoint: str, payload: Option
         data=body,
         headers={"Content-Type": "application/json", "X-RAI-Web-Api-Proxy": "1"},
     )
+    # Bounding the TCP connect itself: urllib's `timeout` only covers the
+    # read/write phase, not the SYN retry. Without this, a Pi/Jetson on an
+    # unreachable subnet (default Linux tcp_syn_retries = 5 × ~75s = ~375s)
+    # would freeze the executor thread long after the request handler should
+    # have returned. We open the socket with a 1.5s connect budget, then
+    # hand it to urlopen which keeps a 3.0s read/write ceiling.
     try:
-        with urllib.request.urlopen(request, timeout=4.0) as response:
-            return _read_agent_json(response)
-    except urllib.error.HTTPError as exc:
-        logger.warning("Runtime bridge %s %s returned HTTP %s", device, endpoint, exc.code)
-        raise HTTPException(status_code=exc.code, detail=f"Runtime bridge '{device}' rejected the request") from exc
+        parsed = urllib.parse.urlparse(base_url)
+        host = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, port), timeout=1.5) as sock:
+            try:
+                with urllib.request.urlopen(request, timeout=3.0) as response:
+                    return _read_agent_json(response)
+            except urllib.error.HTTPError as exc:
+                logger.warning("Runtime bridge %s %s returned HTTP %s", device, endpoint, exc.code)
+                raise HTTPException(status_code=exc.code, detail=f"Runtime bridge '{device}' rejected the request") from exc
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning("Cannot reach runtime bridge %s %s: %s", device, endpoint, exc)
+                raise HTTPException(status_code=503, detail=f"Cannot reach runtime bridge '{device}'") from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -1110,7 +1127,14 @@ async def system_components(request: Request) -> dict:
     for device in ("pi", "jetson"):
         if _can_proxy_to_peer(device):
             try:
-                peer_components = await _agent_request("GET", device, "/api/system/components")
+                # Bound the whole proxy call so an offline peer cannot stall the
+                # request handler. The inner _agent_request_sync now also bounds
+                # the TCP connect itself (1.5s) plus urlopen (3.0s), so this
+                # wait_for is mostly belt-and-braces against the executor.
+                peer_components = await asyncio.wait_for(
+                    _agent_request("GET", device, "/api/system/components"),
+                    timeout=2.5,
+                )
                 for component in peer_components.get("components", []):
                     component_id = component.get("id")
                     if component.get("host_device") != device or not component_id:
