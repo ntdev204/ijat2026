@@ -9,7 +9,4 @@ twist_mux:
         topic: /rai_navigation/cmd_vel
         timeout: 1.0
         priority: 50
-    locks:
-      - topic: /cmd_vel_web
-        timeout: 0.5
-        priority: 100
+    locks: []
