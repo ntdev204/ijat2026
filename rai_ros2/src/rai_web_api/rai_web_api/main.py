@@ -751,11 +751,20 @@ def _agent_request_sync(method: str, device: str, endpoint: str, payload: Option
     conn = connection_cls(host, port, timeout=connect_timeout)
     try:
         try:
+            # Force the connect() call to happen here, while the connect
+            # timeout is set on the connection. Some older Python builds
+            # ignored the constructor timeout and only honored it inside
+            # getresponse(); doing it explicitly removes the ambiguity.
+            conn.connect()
             conn.request(method.upper(), request_path, body=body, headers=headers)
-            # getresponse() with timeout= caps the read phase. Without it, the
-            # connect-timeout would protect us from an unreachable peer but a
-            # peer that accepts the TCP and then stalls would still block.
-            response = conn.getresponse(timeout=read_timeout)
+            # HTTPConnection.getresponse() takes no timeout= kwarg (unlike the
+            # constructor). Bound the read phase by setting the socket-level
+            # timeout right after the connection is established. Without this,
+            # a peer that accepts the TCP and then stalls would still block
+            # the executor thread.
+            response = conn.getresponse()
+            if conn.sock is not None:
+                conn.sock.settimeout(read_timeout)
             raw = response.read(BRIDGE_RESPONSE_LIMIT_BYTES + 1)
         except (http.client.HTTPException, ConnectionError, OSError, socket.timeout) as exc:
             logger.warning("Cannot reach runtime bridge %s %s: %s", device, endpoint, exc)
