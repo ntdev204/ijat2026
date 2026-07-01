@@ -523,7 +523,7 @@ def _ros_runtime_env() -> dict:
     return env
 
 
-def _system_runtime_payload() -> dict:
+def _system_runtime_payload(pi_online: bool = False, jetson_online: bool = False) -> dict:
     return {
         "device_role": DEVICE_ROLE,
         "device_label": DEVICE_LABEL,
@@ -537,8 +537,14 @@ def _system_runtime_payload() -> dict:
             {"id": "hybrid", "label": "Hybrid", "description": "Robot that ket hop visualization/simulation workspace tren Gazebo hoac RViz."},
         ],
         "runtime_bridges": {
-            "pi": PI_BRIDGE_URL or None,
-            "jetson": JETSON_BRIDGE_URL or None,
+            "pi": {
+                "url": PI_BRIDGE_URL or None,
+                "online": pi_online,
+            },
+            "jetson": {
+                "url": JETSON_BRIDGE_URL or None,
+                "online": jetson_online,
+            },
         },
     }
 
@@ -1003,13 +1009,52 @@ async def shutdown() -> None:
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat(), **_system_runtime_payload()}
+    pi_online = False
+    jetson_online = False
+
+    if PI_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "pi", "/api/health"), timeout=2.0)
+            pi_online = True
+        except Exception:
+            pass
+
+    if JETSON_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "jetson", "/api/health"), timeout=2.0)
+            jetson_online = True
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        **_system_runtime_payload(pi_online=pi_online, jetson_online=jetson_online),
+    }
 
 
 @app.get("/api/system/runtime")
 async def system_runtime() -> dict:
     await _load_runtime_settings()
-    return _system_runtime_payload()
+
+    pi_online = False
+    jetson_online = False
+
+    if PI_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "pi", "/api/health"), timeout=2.0)
+            pi_online = True
+        except Exception:
+            pass
+
+    if JETSON_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "jetson", "/api/health"), timeout=2.0)
+            jetson_online = True
+        except Exception:
+            pass
+
+    return _system_runtime_payload(pi_online=pi_online, jetson_online=jetson_online)
 
 
 @app.post("/api/system/operation-mode")
@@ -1018,16 +1063,24 @@ async def set_system_operation_mode(request: SystemOperationModeRequest) -> dict
     global system_operation_mode
     system_operation_mode = request.mode
     await _set_runtime_setting(RUNTIME_SETTING_OPERATION_MODE, request.mode)
+
+    pi_online = False
+    jetson_online = False
+
     for device in ("pi", "jetson"):
         if _can_proxy_to_peer(device):
             try:
                 await _agent_request("POST", device, "/api/system/operation-mode", payload={"mode": request.mode})
+                if device == "pi":
+                    pi_online = True
+                elif device == "jetson":
+                    jetson_online = True
             except Exception:
                 logger.exception("Failed to sync operation mode to %s", device)
     return {
         "success": True,
         "message": f"System operation mode switched to {request.mode}.",
-        **_system_runtime_payload(),
+        **_system_runtime_payload(pi_online=pi_online, jetson_online=jetson_online),
     }
 
 
@@ -1035,6 +1088,24 @@ async def set_system_operation_mode(request: SystemOperationModeRequest) -> dict
 async def system_components(request: Request) -> dict:
     _require_action("system")
     await _load_runtime_settings()
+
+    pi_online = False
+    jetson_online = False
+
+    if PI_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "pi", "/api/health"), timeout=2.0)
+            pi_online = True
+        except Exception:
+            pass
+
+    if JETSON_BRIDGE_URL:
+        try:
+            await asyncio.wait_for(_agent_request("GET", "jetson", "/api/health"), timeout=2.0)
+            jetson_online = True
+        except Exception:
+            pass
+
     components_by_id = {component["id"]: component for component in _local_system_components()}
     for device in ("pi", "jetson"):
         if _can_proxy_to_peer(device):
@@ -1051,7 +1122,7 @@ async def system_components(request: Request) -> dict:
             except Exception:
                 logger.exception("Failed to fetch components from %s", device)
     return {
-        **_system_runtime_payload(),
+        **_system_runtime_payload(pi_online=pi_online, jetson_online=jetson_online),
         "components": list(components_by_id.values()),
     }
 
