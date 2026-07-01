@@ -18,7 +18,7 @@ from rai_runtime_bridge.webrtc import RosImageVideoTrack
 
 
 DEFAULT_HOST = os.getenv("RAI_BRIDGE_HOST", "0.0.0.0")
-DEFAULT_PORT = int(os.getenv("RAI_BRIDGE_PORT", "8090"))
+DEFAULT_PORT = int(os.getenv("RAI_BRIDGE_PORT", "8000"))
 DEVICE_ROLE = os.getenv("RAI_DEVICE_ROLE", "pi").strip().lower()
 DEVICE_LABEL = os.getenv("RAI_DEVICE_LABEL", DEVICE_ROLE or "unknown")
 

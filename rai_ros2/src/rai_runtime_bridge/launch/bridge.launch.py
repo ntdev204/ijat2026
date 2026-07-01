@@ -23,7 +23,7 @@ def generate_launch_description():
     )
     port_arg = DeclareLaunchArgument(
         "port",
-        default_value=os.getenv("RAI_BRIDGE_PORT", "8090"),
+        default_value=os.getenv("RAI_BRIDGE_PORT", "8000"),
         description="Port for the runtime bridge server",
     )
 
